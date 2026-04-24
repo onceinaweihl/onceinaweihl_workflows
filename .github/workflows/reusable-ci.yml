@@ -1,0 +1,196 @@
+name: CI — Reusable
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: frontend
+      coverage_threshold:
+        type: number
+        default: 70
+      core_access_app_id:
+        type: string
+        required: true
+      run_ios_build:
+        description: iOS Debug Build ausführen (kostet macOS-Minutes, default off)
+        type: boolean
+        default: false
+      xcode_version:
+        type: string
+        default: '15.4'
+
+jobs:
+  # ─────────────────────────────────────────
+  # 1. Lint & Format
+  # ─────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Dart format check
+        run: |
+          git ls-files '*.dart' | grep -v '\.g\.dart$' | xargs dart format --line-length 120 --output=none --set-exit-if-changed
+
+      - run: flutter analyze --fatal-infos
+
+  # ─────────────────────────────────────────
+  # 2. Code-Generierung prüfen
+  # ─────────────────────────────────────────
+  codegen-check:
+    name: Code Generation Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Check for uncommitted generated files
+        run: |
+          if [ -n "$(git status --porcelain -- '*.g.dart')" ]; then
+            echo "Generated files are out of date. Run 'dart run build_runner build' and commit the result."
+            git status --porcelain -- '*.g.dart'
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────
+  # 3. Unit & Widget Tests
+  # ─────────────────────────────────────────
+  unit-tests:
+    name: Unit & Widget Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Run tests with coverage
+        run: |
+          flutter test \
+            --coverage \
+            --coverage-path=coverage/lcov.info \
+            --exclude-tags=integration \
+            $(find test -name "*_test.dart" ! -path "test/screenshots/*" | tr '\n' ' ')
+
+      - name: Check coverage threshold (${{ inputs.coverage_threshold }}%)
+        run: |
+          TOTAL=$(lcov --summary coverage/lcov.info 2>&1 \
+            | grep "lines" | grep -oP '[\d.]+(?=%)' | head -1)
+          echo "Coverage: ${TOTAL}%"
+          if (( $(echo "$TOTAL < ${{ inputs.coverage_threshold }}" | bc -l) )); then
+            echo "FAIL: Coverage ${TOTAL}% unter Schwelle (${{ inputs.coverage_threshold }}%)"
+            exit 1
+          fi
+          echo "PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ${{ inputs.working_dir }}/coverage/
+
+  # ─────────────────────────────────────────
+  # 4. Android Debug Build
+  # ─────────────────────────────────────────
+  build-android:
+    name: Android Debug Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  # ─────────────────────────────────────────
+  # 5. iOS Debug Build (opt-in, spart macOS-Minutes)
+  # ─────────────────────────────────────────
+  build-ios:
+    name: iOS Debug Build
+    if: inputs.run_ios_build
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ inputs.xcode_version }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ inputs.xcode_version }}.app
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+      - run: flutter build ios --debug --no-codesign

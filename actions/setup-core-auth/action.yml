@@ -1,0 +1,33 @@
+name: Setup core repo auth
+description: >-
+  Mints a short-lived GitHub App token scoped to onceinaweihl_core and
+  rewrites https://github.com/ clones to use it. Must run after
+  actions/checkout and before any step that resolves git: dependencies
+  (e.g. flutter pub get).
+
+inputs:
+  app-id:
+    description: GitHub App ID. Pass vars.CORE_ACCESS_APP_ID from the caller workflow.
+    required: true
+  private-key:
+    description: GitHub App private key in PEM. Pass secrets.CORE_ACCESS_APP_KEY from the caller workflow.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Generate core-repo access token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: onceinaweihl
+        repositories: onceinaweihl_core
+
+    - name: Rewrite github.com clones to authenticated URL
+      shell: bash
+      env:
+        GH_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        git config --global url."https://x-access-token:${GH_APP_TOKEN}@github.com/".insteadOf "https://github.com/"

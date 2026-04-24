@@ -1,0 +1,22 @@
+name: CI — Pull Request Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-ci.yml@main
+    with:
+      flutter_version: '3.41.4'        # ← anpassen
+      working_dir: frontend             # ← anpassen falls abweichend
+      coverage_threshold: 70            # ← anpassen
+      core_access_app_id: ${{ vars.CORE_ACCESS_APP_ID }}
+      run_ios_build: false
+    secrets: inherit

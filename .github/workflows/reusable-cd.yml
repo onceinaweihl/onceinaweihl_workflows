@@ -1,0 +1,384 @@
+name: CD — Reusable
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: frontend
+      android_app_id:
+        type: string
+        required: true
+      ios_bundle_id:
+        type: string
+        required: true
+      core_access_app_id:
+        type: string
+        required: true
+      coverage_threshold:
+        type: number
+        default: 70
+      has_screenshots:
+        description: Screenshot-Generierung ausführen und in Stores hochladen
+        type: boolean
+        default: true
+      deploy_ios:
+        description: iOS nach App Store deployen (wird bei Tag-Releases immer gesetzt)
+        type: boolean
+        default: false
+      xcode_version:
+        type: string
+        default: '15.4'
+      ruby_version:
+        type: string
+        default: '3.4.2'
+
+jobs:
+  # ─────────────────────────────────────────
+  # 0. Track + Version aus Trigger ableiten
+  # ─────────────────────────────────────────
+  resolve-context:
+    name: Resolve Version & Track
+    runs-on: ubuntu-latest
+    outputs:
+      track: ${{ steps.ctx.outputs.track }}
+      version_name: ${{ steps.ctx.outputs.version_name }}
+    steps:
+      - id: ctx
+        run: |
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            TAG="${REF#refs/tags/v}"
+            if [[ "$TAG" == *"-alpha"* ]]; then
+              TRACK="alpha"
+            elif [[ "$TAG" == *"-beta"* ]]; then
+              TRACK="beta"
+            else
+              TRACK="production"
+            fi
+            VERSION=$(echo "$TAG" | grep -oP '^\d+\.\d+\.\d+')
+          else
+            TRACK="internal"
+            VERSION=""
+          fi
+          echo "track=$TRACK" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Ref: $REF → Track: $TRACK, Version: $VERSION"
+
+  # ─────────────────────────────────────────
+  # 1. Test Gate
+  # ─────────────────────────────────────────
+  test-gate:
+    name: Test Gate
+    runs-on: ubuntu-latest
+    needs: resolve-context
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+      - run: flutter analyze --fatal-infos
+
+      - name: Run tests with coverage
+        run: |
+          flutter test --coverage \
+            $(find test -name "*_test.dart" ! -path "test/screenshots/*" | tr '\n' ' ')
+
+      - name: Coverage Gate (${{ inputs.coverage_threshold }}%)
+        run: |
+          TOTAL=$(lcov --summary coverage/lcov.info 2>&1 \
+            | grep "lines" | grep -oP '[\d.]+(?=%)' | head -1)
+          echo "Coverage: ${TOTAL}%"
+          if (( $(echo "$TOTAL < ${{ inputs.coverage_threshold }}" | bc -l) )); then
+            echo "Coverage ${TOTAL}% unter Schwelle — Release blockiert"
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────
+  # 2. Screenshot-Generierung (opt-in)
+  # ─────────────────────────────────────────
+  generate-screenshots:
+    name: Generate Store Screenshots
+    if: inputs.has_screenshots
+    needs: test-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Generate screenshot goldens
+        run: flutter test test/screenshots/ --update-goldens
+
+      - name: Collect screenshots into store layout
+        run: bash scripts/collect_screenshots.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-screenshots
+          path: ${{ inputs.working_dir }}/android/fastlane/metadata/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: ${{ inputs.working_dir }}/ios/fastlane/screenshots/
+
+  # ─────────────────────────────────────────
+  # 3. Android Release Build + Play Store
+  # ─────────────────────────────────────────
+  deploy-android:
+    name: Android → Google Play (${{ needs.resolve-context.outputs.track }})
+    needs: [resolve-context, test-gate, generate-screenshots]
+    if: |
+      always() &&
+      needs.test-gate.result == 'success' &&
+      (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
+      vars.DEPLOY_ANDROID_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Keystore dekodieren
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
+
+      - name: Store Notes generieren
+        run: |
+          if dart run tool/generate_store_notes.dart --version "${{ needs.resolve-context.outputs.version_name }}" 2>/dev/null; then
+            echo "Store Notes aus JSON generiert"
+          else
+            # Fallback: aus CHANGELOG.md extrahieren
+            DE=$(awk '/^## /{count++; if(count==2)exit} count==1' CHANGELOG.md | tail -n +2 | sed '/^$/d' | head -c 490)
+            EN=$(awk '/^## /{count++; if(count==2)exit} count==1' CHANGELOG.en.md 2>/dev/null | tail -n +2 | sed '/^$/d' | head -c 490 || echo "$DE")
+            mkdir -p whatsnew
+            echo "$DE" > whatsnew/whatsnew-de-DE
+            echo "$EN" > whatsnew/whatsnew-en-US
+          fi
+
+      - name: Build Android AAB
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
+          WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
+        run: |
+          VERSION_NAME="${{ needs.resolve-context.outputs.version_name }}"
+          if [ -n "$VERSION_NAME" ]; then
+            sed -i "s/^version: .*/version: ${VERSION_NAME}+${{ github.run_number }}/" pubspec.yaml
+          fi
+          flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
+            --obfuscate \
+            --split-debug-info=build/app/outputs/symbols \
+            --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
+            --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
+
+      - name: Debug-Symbols sichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-symbols-${{ github.ref_name }}-${{ github.run_number }}
+          path: ${{ inputs.working_dir }}/build/app/outputs/symbols/
+          retention-days: 90
+
+      - name: Download Android screenshots
+        if: inputs.has_screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: android-screenshots
+          path: ${{ inputs.working_dir }}/android/fastlane/metadata/
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby_version }}
+          bundler-cache: true
+          working-directory: ${{ inputs.working_dir }}/android
+
+      - name: Screenshots hochladen
+        if: inputs.has_screenshots
+        working-directory: ${{ inputs.working_dir }}/android
+        env:
+          SUPPLY_JSON_KEY_DATA: ${{ secrets.GOOGLE_PLAY_JSON_KEY }}
+        run: bundle exec fastlane upload_screenshots
+
+      - name: AAB zu Google Play hochladen
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_JSON_KEY }}
+          packageName: ${{ inputs.android_app_id }}
+          releaseFiles: ${{ inputs.working_dir }}/build/app/outputs/bundle/release/app-release.aab
+          track: ${{ needs.resolve-context.outputs.track }}
+          status: completed
+          whatsNewDirectory: ${{ inputs.working_dir }}/whatsnew/
+
+  # ─────────────────────────────────────────
+  # 4. iOS Release Build + App Store
+  # ─────────────────────────────────────────
+  deploy-ios:
+    name: iOS → App Store (${{ needs.resolve-context.outputs.track }})
+    needs: [resolve-context, test-gate, generate-screenshots]
+    if: |
+      always() &&
+      needs.test-gate.result == 'success' &&
+      (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
+      vars.DEPLOY_IOS_ENABLED != 'false' &&
+      inputs.deploy_ios
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ inputs.xcode_version }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ inputs.xcode_version }}.app
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby_version }}
+          bundler-cache: true
+          working-directory: ${{ inputs.working_dir }}/ios
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Zertifikate via Fastlane Match
+        working-directory: ${{ inputs.working_dir }}/ios
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: bundle exec fastlane match appstore --readonly
+
+      - name: Build iOS IPA
+        env:
+          WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
+          WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
+        run: |
+          VERSION_NAME="${{ needs.resolve-context.outputs.version_name }}"
+          if [ -n "$VERSION_NAME" ]; then
+            sed -i "s/^version: .*/version: ${VERSION_NAME}+${{ github.run_number }}/" pubspec.yaml
+          fi
+          flutter build ipa --release \
+            --build-number=${{ github.run_number }} \
+            --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
+            --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
+
+      - name: Download iOS screenshots
+        if: inputs.has_screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-screenshots
+          path: ${{ inputs.working_dir }}/ios/fastlane/screenshots/
+
+      - name: Screenshots hochladen
+        if: inputs.has_screenshots
+        working-directory: ${{ inputs.working_dir }}/ios
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          bundle exec fastlane deliver \
+            --skip_binary_upload \
+            --screenshots_path screenshots/ \
+            --overwrite_screenshots \
+            --skip_metadata
+
+      - name: IPA zu App Store Connect hochladen
+        working-directory: ${{ inputs.working_dir }}/ios
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ "${{ needs.resolve-context.outputs.track }}" = "production" ]; then
+            bundle exec fastlane deliver \
+              --ipa ../build/ios/ipa/*.ipa \
+              --submit_for_review
+          else
+            bundle exec fastlane pilot upload \
+              --ipa ../build/ios/ipa/*.ipa \
+              --skip_waiting_for_build_processing true
+          fi
+
+  # ─────────────────────────────────────────
+  # 5. Fehlerbenachrichtigung
+  # ─────────────────────────────────────────
+  notify-failure:
+    name: Notify on Failure
+    needs: [deploy-android, deploy-ios]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Slack-Benachrichtigung
+        uses: slackapi/slack-github-action@v3
+        with:
+          payload: |
+            {
+              "text": "❌ Release fehlgeschlagen: *${{ github.repository }}* auf `${{ github.ref_name }}`",
+              "attachments": [{
+                "color": "danger",
+                "text": "Commit: ${{ github.sha }}\nAuslöser: ${{ github.actor }}"
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

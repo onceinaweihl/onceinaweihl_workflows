@@ -1,0 +1,26 @@
+name: CD — Release to Stores
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      deploy_ios:
+        description: 'iOS nach App Store deployen'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  cd:
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-cd.yml@main
+    with:
+      flutter_version: '3.41.4'                    # ← anpassen
+      working_dir: frontend                          # ← anpassen falls abweichend
+      android_app_id: de.onceinaweihl.APPNAME        # ← anpassen
+      ios_bundle_id: de.onceinaweihl.APPNAME         # ← anpassen
+      core_access_app_id: ${{ vars.CORE_ACCESS_APP_ID }}
+      coverage_threshold: 70                         # ← anpassen
+      has_screenshots: true                          # ← auf false wenn keine Screenshot-Tests
+      deploy_ios: ${{ inputs.deploy_ios || github.ref_type == 'tag' }}
+    secrets: inherit

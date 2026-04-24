@@ -191,8 +191,12 @@ jobs:
 
       - name: Store Notes generieren
         run: |
-          if dart run tool/generate_store_notes.dart --version "${{ needs.resolve-context.outputs.version_name }}" 2>/dev/null; then
-            echo "Store Notes aus JSON generiert"
+          if dart run onceinaweihl_core:generate_store_notes \
+              --version "${{ needs.resolve-context.outputs.version_name }}" \
+              --ios-fastlane-dir ios/fastlane \
+              --android-fastlane-dir android/fastlane \
+              --whatsnew-dir whatsnew; then
+            echo "Store Notes aus What's New JSON generiert"
           else
             # Fallback: aus CHANGELOG.md extrahieren
             DE=$(awk '/^## /{count++; if(count==2)exit} count==1' CHANGELOG.md | tail -n +2 | sed '/^$/d' | head -c 490)

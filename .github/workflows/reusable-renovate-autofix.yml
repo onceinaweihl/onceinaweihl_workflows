@@ -1,0 +1,88 @@
+name: Renovate Autofix — Reusable
+
+# Auto-fixes drift on Renovate PRs that the consumer's CI cannot resolve on
+# its own:
+#   - pubspec.lock is regenerated from the bumped pubspec.yaml constraints
+#   - build_runner regenerates *.g.dart / *.freezed.dart against the new lock
+#   - dart format is applied (line length 120)
+#
+# If anything changed, a single fixup commit is pushed back to the PR branch.
+# The push uses GITHUB_TOKEN, which means it does NOT re-trigger downstream
+# workflows. The consumer's CI will run on this new SHA only when the PR is
+# next touched (e.g. via the "rebase" checkbox on the PR or the Dependency
+# Dashboard). To enable full automation, configure a PAT/GitHub App token
+# with contents:write and pass it via the optional autofix_token secret.
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: .
+      core_access_app_id:
+        type: string
+        required: true
+    secrets:
+      autofix_token:
+        description: >-
+          Optional PAT or GitHub App token with contents:write. When set, the
+          autofix push is performed under this identity, which DOES re-trigger
+          downstream workflows. Falls back to GITHUB_TOKEN if not provided.
+        required: false
+
+jobs:
+  autofix:
+    name: Autofix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.autofix_token || secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - name: Refresh pubspec.lock
+        run: flutter pub get
+
+      - name: Regenerate codegen
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Apply dart format
+        shell: bash
+        run: |
+          mapfile -t files < <(git ls-files '*.dart' | grep -v '\.g\.dart$')
+          if [ ${#files[@]} -gt 0 ]; then
+            printf '%s\0' "${files[@]}" | xargs -0 dart format --line-length 120
+          fi
+
+      - name: Commit & push fixup if needed
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::notice::No autofix changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: autofix lockfile, codegen and formatting"
+          git push
+          echo "::notice::Autofix commit pushed. CI will only re-run automatically if autofix_token is configured."

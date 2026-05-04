@@ -1,0 +1,77 @@
+name: Regenerate Codegen — Reusable
+
+# Manually triggered workflow that regenerates *.g.dart / *.freezed.dart
+# files against the current pubspec.lock and pushes the result back to the
+# branch the workflow was dispatched on.
+#
+# Use this when the codegen-check job in reusable-ci.yml fails because
+# committed generated files have drifted from what the current toolchain
+# produces (e.g. after a dependency bump that changes generator output).
+#
+# Trigger from the consumer repo's Actions tab via workflow_dispatch on the
+# branch you want to fix.
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: .
+      core_access_app_id:
+        type: string
+        required: true
+    secrets:
+      autofix_token:
+        description: >-
+          Optional PAT or GitHub App token with contents:write. When set, the
+          regenerate push is performed under this identity, which DOES
+          re-trigger downstream workflows. Falls back to GITHUB_TOKEN if not
+          provided (push will not re-trigger CI in that case).
+        required: false
+
+jobs:
+  regenerate:
+    name: Regenerate Codegen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.autofix_token || secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      - name: Regenerate codegen
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Commit & push if needed
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain -- '*.g.dart' '*.freezed.dart')" ]; then
+            echo "::notice::Codegen already up to date — nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.g.dart' '*.freezed.dart' 2>/dev/null || true
+          git commit -m "chore: regenerate codegen"
+          git push
+          echo "::notice::Codegen regenerated and pushed. CI will only re-run automatically if autofix_token is configured."

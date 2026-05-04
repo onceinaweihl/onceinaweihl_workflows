@@ -24,6 +24,12 @@ on:
         type: string
         required: true
     secrets:
+      CORE_ACCESS_APP_KEY:
+        description: >-
+          Private key for the Onceinaweihl Core Access GitHub App, used to
+          authenticate `flutter pub get` against the private onceinaweihl_core
+          package.
+        required: true
       autofix_token:
         description: >-
           Optional PAT or GitHub App token with contents:write. When set, the

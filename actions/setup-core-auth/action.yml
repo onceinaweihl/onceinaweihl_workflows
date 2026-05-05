@@ -23,6 +23,14 @@ inputs:
     required: false
     default: onceinaweihl_core
 
+outputs:
+  token:
+    description: >-
+      The minted installation token. Exposed so callers can pass it
+      explicitly to e.g. actions/checkout when cloning a private repo
+      the default GITHUB_TOKEN doesn't have access to.
+    value: ${{ steps.app-token.outputs.token }}
+
 runs:
   using: composite
   steps:

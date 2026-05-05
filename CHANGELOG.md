@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.2.0...v1.3.0) (2026-05-05)
+
+
+### Features
+
+* **actions/setup-core-auth:** expose minted token as output ([6869a7a](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/6869a7a30e9f510675c1c989a35305979526e370))
+* **actions/setup-core-auth:** parametrize repositories input ([dbd5537](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/dbd5537bc2fe645a72a6faf76f08e381cd4051d2))
+* **reusable-regenerate-codegen:** also regenerate flutter gen-l10n output ([4a9fec0](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/4a9fec01a8b8456cce8d2be2c67a3082cabd4d6b))
+
+
+### Bug Fixes
+
+* declare CORE_ACCESS_APP_KEY as named secret in reusable workflow ([fc5ac03](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/fc5ac03df3e5980a702efd0291abfe1d2b164b77))
+
 ## [1.2.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.1.0...v1.2.0) (2026-05-04)
 
 

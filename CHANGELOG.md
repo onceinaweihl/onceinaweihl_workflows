@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.3.0...v1.4.0) (2026-05-06)
+
+
+### Features
+
+* **regenerate-codegen:** also commit pubspec.lock ([b80fdb4](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/b80fdb43b03864c98b9eebee8dbb47fe886319b6))
+
 ## [1.3.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.2.0...v1.3.0) (2026-05-05)
 
 

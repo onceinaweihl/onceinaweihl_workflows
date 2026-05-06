@@ -2,16 +2,22 @@ name: Regenerate Codegen — Reusable
 
 # Manually triggered workflow that regenerates generated source files
 # (build_runner output: *.g.dart / *.freezed.dart, plus flutter gen-l10n
-# output: app_localizations*.dart) against the current pubspec.lock and
-# pushes the result back to the branch the workflow was dispatched on.
+# output: app_localizations*.dart, plus pubspec.lock when pubspec.yaml
+# changed) against the current dependency state and pushes the result
+# back to the branch the workflow was dispatched on.
 #
-# Use this when the codegen-check job in reusable-ci.yml fails because
-# committed generated files have drifted from what the current toolchain
-# produces — e.g. after a dependency bump that changes generator output,
-# or after editing .arb files without local Flutter access.
+# Use this when:
+# - the codegen-check job in reusable-ci.yml fails because committed
+#   generated files have drifted from what the current toolchain
+#   produces (e.g. after a dependency bump that changes generator
+#   output, or after editing .arb files without local Flutter access)
+# - a Renovate pub PR landed without a pubspec.lock update because
+#   the Mend-hosted runner cannot auth our private git deps; the
+#   regenerate workflow runs `flutter pub get` here under
+#   setup-core-auth, so the lockfile gets refreshed on the PR branch
 #
-# Trigger from the consumer repo's Actions tab via workflow_dispatch on the
-# branch you want to fix.
+# Trigger from the consumer repo's Actions tab via workflow_dispatch on
+# the branch you want to fix.
 
 on:
   workflow_call:
@@ -82,13 +88,13 @@ jobs:
       - name: Commit & push if needed
         shell: bash
         run: |
-          if [ -z "$(git status --porcelain -- '*.g.dart' '*.freezed.dart' '*app_localizations*.dart')" ]; then
+          if [ -z "$(git status --porcelain -- '*.g.dart' '*.freezed.dart' '*app_localizations*.dart' 'pubspec.lock')" ]; then
             echo "::notice::Generated code already up to date — nothing to commit"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add '*.g.dart' '*.freezed.dart' '*app_localizations*.dart' 2>/dev/null || true
+          git add '*.g.dart' '*.freezed.dart' '*app_localizations*.dart' 'pubspec.lock' 2>/dev/null || true
           git commit -m "chore: regenerate generated code"
           git push
           echo "::notice::Generated code regenerated and pushed. CI will only re-run automatically if autofix_token is configured."

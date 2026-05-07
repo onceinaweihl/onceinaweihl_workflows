@@ -1,0 +1,7 @@
+name: 'Test Action'
+description: 'Probe whether action files can be written'
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: echo "test"

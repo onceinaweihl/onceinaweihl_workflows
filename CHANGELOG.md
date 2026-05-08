@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.4.0...v1.5.0) (2026-05-08)
+
+
+### Features
+
+* **autofix:** support workflow_dispatch alongside pull_request events ([1f906d9](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/1f906d9f618f7a356ce6add7d11f174f5b732e39))
+
 ## [1.4.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.3.0...v1.4.0) (2026-05-06)
 
 

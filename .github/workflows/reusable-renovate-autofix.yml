@@ -1,17 +1,4 @@
-name: Renovate Autofix — Reusable
-
-# Auto-fixes drift on Renovate PRs that the consumer's CI cannot resolve on
-# its own:
-#   - pubspec.lock is regenerated from the bumped pubspec.yaml constraints
-#   - build_runner regenerates *.g.dart / *.freezed.dart against the new lock
-#   - dart format is applied (line length 120)
-#
-# If anything changed, a single fixup commit is pushed back to the PR branch.
-# The push uses GITHUB_TOKEN, which means it does NOT re-trigger downstream
-# workflows. The consumer's CI will run on this new SHA only when the PR is
-# next touched (e.g. via the "rebase" checkbox on the PR or the Dependency
-# Dashboard). To enable full automation, configure a PAT/GitHub App token
-# with contents:write and pass it via the optional autofix_token secret.
+name: Autofix — Reusable
 
 on:
   workflow_call:
@@ -46,7 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          # pull_request → check out the PR branch; workflow_dispatch
+          # (or anything else) → fall back to the dispatched branch.
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           token: ${{ secrets.autofix_token || secrets.GITHUB_TOKEN }}
 
       - uses: subosito/flutter-action@v2
@@ -64,6 +53,15 @@ jobs:
 
       - name: Regenerate codegen
         run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Regenerate l10n (if configured)
+        shell: bash
+        run: |
+          if [ -f l10n.yaml ]; then
+            flutter gen-l10n
+          else
+            echo "::notice::No l10n.yaml found — skipping flutter gen-l10n"
+          fi
 
       - name: Apply dart format
         shell: bash

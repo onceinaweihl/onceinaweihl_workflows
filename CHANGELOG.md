@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.5.0...v1.6.0) (2026-05-09)
+
+
+### Features
+
+* **reusable-build-android-apk:** add manual APK build workflow ([34f6723](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/34f672366333105b0a2995c162200f1f6967e807))
+* **reusable-build-android-apk:** add manual APK build workflow ([943c4bf](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/943c4bf8d06ab46238b69a8375e25ac6e0cea124))
+
 ## [1.5.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.4.0...v1.5.0) (2026-05-08)
 
 

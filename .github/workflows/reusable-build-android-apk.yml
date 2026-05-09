@@ -1,0 +1,109 @@
+name: Build Android APK — Reusable
+
+# Manueller Dev-Build, der ein installierbares APK als Artifact zurückgibt.
+# Im Gegensatz zu reusable-cd.yml hier KEIN Store-Upload, KEIN Keystore,
+# KEINE Test-Gate — nur "bauen und mir das APK geben". Use-Case:
+# Sideload-Build aufs eigene Handy für manuelle Verifikation, ohne dass
+# CI bei jedem PR ein Artifact produziert.
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: frontend
+      core_access_app_id:
+        type: string
+        required: true
+      build_type:
+        description: APK-Variante (debug ist standard signiert und sideloadbar)
+        type: string
+        default: debug
+      retention_days:
+        description: Wie lange das APK als Artifact verfügbar bleibt
+        type: number
+        default: 7
+      artifact_name_prefix:
+        description: Prefix für den Artifact-Namen (default app-name vom Repo)
+        type: string
+        default: app
+
+jobs:
+  build-android-apk:
+    name: Build Android APK (${{ inputs.build_type }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      # Validate the build_type input — Flutter accepts debug/profile/release
+      # and we want clear failures rather than silent fallbacks.
+      - name: Validate build_type
+        run: |
+          case "${{ inputs.build_type }}" in
+            debug|profile|release)
+              echo "Building ${{ inputs.build_type }} APK"
+              ;;
+            *)
+              echo "Invalid build_type '${{ inputs.build_type }}' — must be debug, profile, or release"
+              exit 1
+              ;;
+          esac
+
+      - name: Build APK
+        run: flutter build apk --${{ inputs.build_type }}
+
+      # Flutter writes the APK to a build-type-specific directory:
+      #   build/app/outputs/flutter-apk/app-debug.apk
+      #   build/app/outputs/flutter-apk/app-profile.apk
+      #   build/app/outputs/flutter-apk/app-release.apk
+      # Release builds without a keystore produce app-release-unsigned.apk
+      # — guard against that case explicitly so the artifact upload
+      # doesn't silently miss the file.
+      - name: Locate APK
+        id: locate
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-${{ inputs.build_type }}.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            UNSIGNED="build/app/outputs/flutter-apk/app-${{ inputs.build_type }}-unsigned.apk"
+            if [ -f "$UNSIGNED" ]; then
+              echo "Found unsigned APK at $UNSIGNED — release builds need a keystore for sideload."
+              echo "Use 'debug' build_type for sideloading without a keystore, or wire up the"
+              echo "release signing config and use reusable-cd.yml for proper release builds."
+              exit 1
+            fi
+            echo "APK not found at expected path: $APK_PATH"
+            ls -la build/app/outputs/flutter-apk/ || true
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "Built: $APK_PATH ($(du -h "$APK_PATH" | cut -f1))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name_prefix }}-${{ inputs.build_type }}-${{ github.run_number }}
+          path: ${{ inputs.working_dir }}/${{ steps.locate.outputs.apk_path }}
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: error

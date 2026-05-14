@@ -22,6 +22,14 @@ on:
       xcode_version:
         type: string
         default: '15.4'
+      security_enabled:
+        description: Trivy Security Scan ausführen (vuln + secret + misconfig)
+        type: boolean
+        default: true
+      security_severity:
+        description: Severity-Schwelle die den Build failed (Komma-getrennt)
+        type: string
+        default: 'HIGH,CRITICAL'
 
 jobs:
   # ─────────────────────────────────────────
@@ -194,3 +202,77 @@ jobs:
 
       - run: flutter pub get
       - run: flutter build ios --debug --no-codesign
+
+  # ─────────────────────────────────────────
+  # 6. Security Scan (Trivy)
+  # ─────────────────────────────────────────
+  # Blocks PRs that introduce HIGH/CRITICAL vulns, secrets, or
+  # misconfigurations. Severity threshold and on/off-switch are configurable
+  # via the security_enabled / security_severity inputs.
+  #
+  # Action is SHA-pinned after the March 2026 supply-chain incident
+  # (aquasecurity/trivy-action: 75 tags force-pushed to malicious commits).
+  # Renovate keeps the pin fresh via the `# renovate:` annotation — do
+  # NOT replace it with a floating tag.
+  security-scan:
+    name: Security Scan
+    if: inputs.security_enabled
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write     # upload SARIF to Security tab
+      actions: read              # required by upload-sarif on private repos
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Generate the pubspec.lock + transitive lockfiles Trivy needs to
+      # resolve Dart vulns. Doing this before the scan means findings
+      # don't depend on whether Renovate has run on this branch yet.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      # Trivy binary version. Action and binary versions are independent;
+      # both pinned for reproducibility.
+      # renovate: datasource=github-releases depName=aquasecurity/trivy
+      - name: Set Trivy version
+        run: echo "TRIVY_VERSION=v0.58.1" >> "$GITHUB_ENV"
+
+      # SHA-pinned to v0.36.0 per March 2026 supply-chain incident.
+      # renovate: action=aquasecurity/trivy-action
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.working_dir }}
+          scanners: vuln,secret,misconfig
+          severity: ${{ inputs.security_severity }}
+          ignore-unfixed: true       # don't fail on CVEs without an upstream fix yet
+          exit-code: '1'             # fail the step on any matching finding
+          format: sarif
+          output: trivy-results.sarif
+          version: ${{ env.TRIVY_VERSION }}
+        env:
+          # Trivy DB mirrored to GHCR; Docker Hub ratelimits bite us otherwise.
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db
+
+      # Upload SARIF even when the previous step failed, so findings show
+      # up in the Security tab while the PR is blocked.
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif
+          category: trivy-fs

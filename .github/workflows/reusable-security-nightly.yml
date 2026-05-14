@@ -1,0 +1,167 @@
+name: Security Nightly — Reusable
+
+# Daily scan against the freshly-downloaded Trivy DB. The PR-gate in
+# reusable-ci.yml covers "is this PR clean"; this covers "is what's on
+# main still clean given what was disclosed in the last 24h". Findings
+# open or update a GitHub issue — they do NOT fail the workflow,
+# because a stale-because-red build is worse than a tracked issue.
+#
+# Action is SHA-pinned per the March 2026 trivy-action supply-chain
+# incident; see reusable-ci.yml security-scan job for context.
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        type: string
+        required: true
+      working_dir:
+        type: string
+        default: frontend
+      core_access_app_id:
+        type: string
+        required: true
+      severity:
+        description: Severity levels to report
+        type: string
+        default: 'HIGH,CRITICAL'
+
+jobs:
+  scan:
+    name: Nightly Trivy scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      security-events: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter_version }}
+          cache: true
+
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+
+      - run: flutter pub get
+
+      # renovate: datasource=github-releases depName=aquasecurity/trivy
+      - name: Set Trivy version
+        run: echo "TRIVY_VERSION=v0.58.1" >> "$GITHUB_ENV"
+
+      # First call: JSON for the issue body. SHA-pinned per supply-chain
+      # incident; see reusable-ci.yml for context.
+      # renovate: action=aquasecurity/trivy-action
+      - name: Run Trivy (JSON for issue body)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.working_dir }}
+          scanners: vuln,secret
+          severity: ${{ inputs.severity }}
+          ignore-unfixed: true
+          exit-code: '0'             # never fail the workflow
+          format: json
+          output: trivy-results.json
+          version: ${{ env.TRIVY_VERSION }}
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db
+
+      # Second call: SARIF for the Security tab. skip-setup-trivy reuses
+      # the binary installed by the first call.
+      # renovate: action=aquasecurity/trivy-action
+      - name: Run Trivy (SARIF for Security tab)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ inputs.working_dir }}
+          scanners: vuln,secret
+          severity: ${{ inputs.severity }}
+          ignore-unfixed: true
+          exit-code: '0'
+          format: sarif
+          output: trivy-results.sarif
+          skip-setup-trivy: true
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif
+          category: trivy-nightly
+
+      - name: Render findings as Markdown
+        shell: bash
+        run: |
+          python3 - <<'PY' > "$GITHUB_WORKSPACE/findings.md"
+          import json
+          import pathlib
+
+          path = pathlib.Path("${{ inputs.working_dir }}/trivy-results.json")
+          if not path.exists():
+              print("_(no Trivy output file — scan did not run)_")
+              raise SystemExit(0)
+
+          doc = json.loads(path.read_text() or "{}")
+          results = doc.get("Results") or []
+
+          rows = []
+          for r in results:
+              target = r.get("Target", "?")
+              for v in (r.get("Vulnerabilities") or []):
+                  rows.append((
+                      target,
+                      v.get("Severity", "?"),
+                      v.get("PkgName", "?"),
+                      v.get("InstalledVersion", "?"),
+                      v.get("FixedVersion", "—"),
+                      v.get("VulnerabilityID", "?"),
+                      v.get("PrimaryURL", ""),
+                  ))
+              for s in (r.get("Secrets") or []):
+                  rows.append((
+                      target,
+                      s.get("Severity", "?"),
+                      "[secret]",
+                      "—",
+                      "—",
+                      s.get("RuleID", "?"),
+                      "",
+                  ))
+
+          if not rows:
+              print("_(0 findings)_")
+              raise SystemExit(0)
+
+          print(f"**{len(rows)} finding(s)** at severity ${{ inputs.severity }}.")
+          print()
+          print("| Target | Severity | Package | Installed | Fixed | ID |")
+          print("|--------|----------|---------|-----------|-------|----|")
+          for target, sev, pkg, inst, fix, vid, url in rows:
+              id_cell = f"[{vid}]({url})" if url else vid
+              print(f"| `{target}` | {sev} | {pkg} | {inst} | {fix} | {id_cell} |")
+
+          print()
+          print("---")
+          print()
+          print("Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          PY
+
+      - name: Open or update tracking issue
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: 'Security: nightly Trivy scan findings'
+          content-filepath: findings.md
+          labels: security,nightly-scan
+          # Re-uses existing open issue with the same title (one open
+          # issue per repo at any time, body refreshed on each run).
+          update-existing: true

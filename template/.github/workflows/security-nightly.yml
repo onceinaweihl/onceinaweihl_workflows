@@ -1,0 +1,21 @@
+name: Security Nightly
+
+on:
+  schedule:
+    # 04:00 UTC daily (~05:00/06:00 Berlin, before work hours)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  security-events: write
+
+jobs:
+  scan:
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-security-nightly.yml@main
+    with:
+      flutter_version: '3.41.4'         # ← anpassen
+      working_dir: frontend              # ← anpassen falls abweichend
+      core_access_app_id: ${{ vars.CORE_ACCESS_APP_ID }}
+    secrets: inherit

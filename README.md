@@ -8,18 +8,20 @@ Zentrale GitHub Actions für alle onceinaweihl Flutter-Apps. Jede App bindet die
 
 ```
 .github/workflows/
-  reusable-ci.yml            # PR-Checks: Lint, Codegen, Tests, Android Build
-  reusable-cd.yml            # Release: Build + Sign + Store Upload
-  reusable-release-please.yml # Automatisches Versioning via Conventional Commits
+  reusable-ci.yml              # PR-Checks: Lint, Codegen, Tests, Android Build, Security Scan
+  reusable-cd.yml              # Release: Build + Sign + Store Upload
+  reusable-release-please.yml  # Automatisches Versioning via Conventional Commits
+  reusable-security-nightly.yml # Daily Trivy scan, opens GitHub issue on findings
 
 actions/
-  setup-core-auth/           # GitHub App Token für onceinaweihl_core
+  setup-core-auth/             # GitHub App Token für onceinaweihl_core
 
 template/
   .github/workflows/
-    ci.yml                   # Thin wrapper — kopieren, 3 Werte anpassen
+    ci.yml                     # Thin wrapper — kopieren, 3 Werte anpassen
     cd.yml
     release.yml
+    security-nightly.yml       # Daily security scan wrapper
   release-please-config.json
   .release-please-manifest.json
 ```
@@ -36,6 +38,7 @@ Kopiere den gesamten Inhalt von `template/` in das Root des neuen App-Repos:
 .github/workflows/ci.yml
 .github/workflows/cd.yml
 .github/workflows/release.yml
+.github/workflows/security-nightly.yml
 release-please-config.json
 .release-please-manifest.json
 ```
@@ -56,6 +59,12 @@ working_dir: frontend
 android_app_id: de.onceinaweihl.APPNAME   # Package Name aus build.gradle
 ios_bundle_id: de.onceinaweihl.APPNAME    # Bundle ID aus Xcode
 has_screenshots: true                      # false wenn keine Screenshot-Tests vorhanden
+```
+
+In `.github/workflows/security-nightly.yml`:
+```yaml
+flutter_version: '3.41.4'       # aktuelle Flutter-Version
+working_dir: frontend            # Pfad zum Flutter-Projekt
 ```
 
 In `release-please-config.json`:
@@ -157,6 +166,52 @@ chore:, docs:, refactor:   → kein Release
 | `v1.1.0` | Production |
 | `v1.1.0-beta.1` | Beta / TestFlight |
 | `v1.1.0-alpha.1` | Alpha (Android only) |
+
+---
+
+## Security Scanning
+
+Drei Layer, alle automatisch:
+
+1. **Lokaler Stop-Hook** (in `onceinaweihl/claude-plugins` → `trivy_secrets_on_stop.py`): blockt Secrets, bevor sie überhaupt committed werden. Läuft auf jedem Claude-Turn in Flutter-Projekten.
+2. **PR-Gate** (`reusable-ci.yml` → `security-scan` Job): Trivy fs-scan (vuln + secret + misconfig) auf jedem PR. HIGH/CRITICAL blockt den Merge. SARIF wird in den GitHub Security Tab geladen.
+3. **Nightly Scan** (`reusable-security-nightly.yml`): täglich um 04:00 UTC gegen die frisch geladene Trivy-DB. Bei neuen Findings wird ein GitHub Issue geöffnet oder ein bestehendes aktualisiert — kein Build-Fail, damit ein nicht-fixbares Finding nicht permanent `main` rot färbt.
+
+### PR-Gate konfigurieren
+
+Standardmäßig aktiv. Override im App-Wrapper `ci.yml`:
+
+```yaml
+# Komplett deaktivieren (z. B. für reine Asset-Repos):
+with:
+  security_enabled: false
+
+# Strengere Schwelle:
+with:
+  security_severity: 'MEDIUM,HIGH,CRITICAL'
+```
+
+### Nightly Scan einrichten
+
+`template/.github/workflows/security-nightly.yml` 1:1 ins App-Repo kopieren, `flutter_version` und ggf. `working_dir` anpassen. Keine zusätzlichen Secrets nötig — `secrets: inherit` zieht die existierenden GitHub Actions Secrets durch.
+
+Repos ohne Nightly: einfach die Datei weglassen. Es gibt keinen On/Off-Input — das Vorhandensein der Wrapper-Datei *ist* der Schalter.
+
+### `.trivyignore` für bekannte, akzeptierte Findings
+
+Wenn ein HIGH/CRITICAL gemeldet wird, das wir nicht sofort fixen können (transitive Dep ohne Upstream-Fix), ans Repo-Root eine `.trivyignore` mit Erklärung:
+
+```
+# CVE-2024-12345 — flutter_local_notifications transitive dep, fixed in 21.x
+# Holding at 17.x per docs/dependency-blockers.md; re-check 2026-07
+CVE-2024-12345
+```
+
+`.trivyignore` immer zusammen mit einem Eintrag in `docs/dependency-blockers.md` setzen, damit der Grund in Code-Reviews sichtbar ist. Volle Doku in `onceinaweihl/claude-plugins` → `flutter-dart` Skill → `references/security.md`.
+
+### Supply-Chain-Pinning
+
+Die `aquasecurity/trivy-action` ist auf Commit-SHA gepinnt, nicht auf Tag — im März 2026 wurden bei dieser Action 75 Tags auf malicious Commits umgebogen. Renovate hält den Pin frisch via `# renovate: action=...` Annotation. **Pin nicht** auf einen floating Tag wechseln.
 
 ---
 

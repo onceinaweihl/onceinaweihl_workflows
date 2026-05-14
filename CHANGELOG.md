@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.6.0...v1.7.0) (2026-05-14)
+
+
+### Features
+
+* **reusable-ci:** add Trivy security scan job ([4ded8d2](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/4ded8d2138559614dc1874b2a7a99d351c97c900))
+* **reusable-ci:** add Trivy security scan job ([4d58cc5](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/4d58cc5e8cb10e5290e1d565b3ba288197f34cc9))
+
 ## [1.6.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.5.0...v1.6.0) (2026-05-09)
 
 

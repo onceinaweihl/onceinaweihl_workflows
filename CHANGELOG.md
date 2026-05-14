@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.7.0...v1.8.0) (2026-05-14)
+
+
+### Features
+
+* add reusable security-nightly workflow + template wrapper ([8ffb357](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/8ffb3571ccc2d394802fc6ea53a08a2577fe9c51))
+* **reusable-security-nightly:** add daily Trivy scan workflow ([092e6c5](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/092e6c533478e9285883078ef0bddf5a57a174cd))
+* **template:** add security-nightly wrapper for new apps ([ee1f31d](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/ee1f31d095e70554de2fcafad302836fd98ba491))
+
 ## [1.7.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.6.0...v1.7.0) (2026-05-14)
 
 

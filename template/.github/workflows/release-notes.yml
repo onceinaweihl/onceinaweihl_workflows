@@ -1,0 +1,18 @@
+name: Release Notes
+
+# Aggregates per-PR `### Release Note (DE/EN)` snippets onto the release-please
+# PR. Requires `frontend/tool/aggregate_release_notes.dart` and the Release Note
+# section in the PR template. See the app's docs/release-process.md.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-notes:
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-notes.yml@main
+    secrets: inherit

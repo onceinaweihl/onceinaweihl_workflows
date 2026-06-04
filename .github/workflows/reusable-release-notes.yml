@@ -1,0 +1,178 @@
+name: Release Notes — Reusable
+
+# Aggregates the per-PR `### Release Note (DE/EN)` snippets of a release into
+# the user-facing release notes (in-app "What's new" + fastlane store metadata)
+# and commits them onto the release-please PR branch — so they ship inside the
+# tag instead of being back-filled afterwards.
+#
+# Wire it up from a caller that triggers on the release-please PR, e.g.:
+#
+#   on:
+#     pull_request:
+#       branches: [main]
+#   permissions:
+#     contents: write
+#     pull-requests: write
+#   jobs:
+#     release-notes:
+#       uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-notes.yml@vX
+#       secrets: inherit
+#
+# The aggregation itself lives in the app repo (a pure-Dart script) so the
+# release-notes format stays app-specific and unit-tested there.
+
+on:
+  workflow_call:
+    inputs:
+      working_dir:
+        description: App package dir, relative to repo root.
+        type: string
+        default: frontend
+      aggregator_script:
+        description: Dart aggregator script, relative to working_dir.
+        type: string
+        default: tool/aggregate_release_notes.dart
+      release_branch_prefix:
+        description: Only run when the PR head branch starts with this.
+        type: string
+        default: release-please--branches--main
+
+permissions:
+  contents: write       # commit the seeded notes onto the release PR branch
+  pull-requests: write  # post the preview comment
+
+jobs:
+  release-notes:
+    name: Aggregate release notes
+    runs-on: ubuntu-latest
+    # Only act on the release-please PR.
+    if: ${{ github.event.pull_request != null && startsWith(github.head_ref, inputs.release_branch_prefix) }}
+    steps:
+      - name: Checkout the release PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      # ── Collect the release notes from every PR in this release ────────────
+      - name: Gather release notes from PRs
+        id: gather
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+
+            // Release-please titles its PR e.g. "chore(main): release 1.4.0".
+            const version = (pr.title.match(/release\s+(\d+\.\d+\.\d+)/i) || [])[1];
+            if (!version) {
+              core.setFailed(`Could not parse a version from PR title: "${pr.title}"`);
+              return;
+            }
+            const date = new Date().toISOString().slice(0, 10);
+
+            // Parse one PR body into { icon, de:{title,description}, en:{...} }.
+            const parseNote = (body) => {
+              if (!body) return { icon: '', de: blank(), en: blank() };
+              const clean = body.replace(/<!--[\s\S]*?-->/g, '');
+              const icon = (clean.match(/^\s*icon:\s*([a-z_]+)\s*$/im) || [])[1] || '';
+              const lang = (tag) => {
+                const re = new RegExp(
+                  `###\\s*Release Note \\(${tag}\\)\\s*\\n([\\s\\S]*?)(?=\\n#{1,6}\\s|$)`, 'i');
+                const m = clean.match(re);
+                if (!m) return blank();
+                const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+                return { title: lines[0] || '', description: lines.slice(1).join(' ').trim() };
+              };
+              return { icon, de: lang('DE'), en: lang('EN') };
+            };
+            function blank() { return { title: '', description: '' }; }
+
+            // The release-please PR branch only holds the release commit; the
+            // feature commits are already on main. release-please instead lists
+            // every change in its PR body as `#NNN` references — collect those.
+            const refs = [...new Set([...(pr.body || '').matchAll(/#(\d+)/g)].map((m) => Number(m[1])))]
+              .filter((n) => n !== pr.number);
+            const notes = [];
+            const emptyPRs = [];
+            for (const num of refs) {
+              let apr;
+              try {
+                apr = (await github.rest.pulls.get({ owner, repo, pull_number: num })).data;
+              } catch (e) {
+                continue; // a plain issue reference, or not found — skip
+              }
+              const note = parseNote(apr.body || '');
+              if (note.de.title || note.en.title) {
+                notes.push({ pr: num, ...note });
+              } else {
+                emptyPRs.push({ pr: num, title: apr.title });
+              }
+            }
+
+            const input = {
+              version, date,
+              highlights: notes.map((n) => ({ icon: n.icon, de: n.de, en: n.en })),
+            };
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/release_notes_input.json`, JSON.stringify(input, null, 2));
+            core.setOutput('has_notes', String(notes.length > 0));
+            core.setOutput('version', version);
+
+            // Idempotent preview comment.
+            const marker = '<!-- release-notes-preview -->';
+            const lines = [marker, `### 📝 Release notes preview — v${version}`, ''];
+            if (notes.length) {
+              for (const n of notes) {
+                lines.push(`- **${n.de.title || n.en.title}** (#${n.pr})${n.icon ? ` _[${n.icon}]_` : ''}`);
+              }
+            } else {
+              lines.push('_No PRs in this release carry a Release Note._');
+            }
+            if (emptyPRs.length) {
+              lines.push('', '<details><summary>PRs without a Release Note (confirm these are internal-only)</summary>', '');
+              for (const e of emptyPRs) lines.push(`- #${e.pr} — ${e.title}`);
+              lines.push('</details>');
+            }
+            const body = lines.join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number, per_page: 100,
+            });
+            const existing = comments.find((c) => (c.body || '').includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+            }
+
+      # ── Run the app's aggregator (pure Dart; no pub get / core auth) ────────
+      - name: Setup Dart
+        if: steps.gather.outputs.has_notes == 'true'
+        uses: dart-lang/setup-dart@v1
+
+      - name: Aggregate into release-notes files
+        if: steps.gather.outputs.has_notes == 'true'
+        # Run the script from a pubspec-free temp dir (so Dart does not trigger
+        # an implicit `pub get` of the app's private git deps) but with the CWD
+        # set to working_dir so its relative file paths resolve.
+        run: |
+          cp "${{ inputs.working_dir }}/${{ inputs.aggregator_script }}" "${RUNNER_TEMP}/aggregate.dart"
+          cd "${{ inputs.working_dir }}"
+          dart "${RUNNER_TEMP}/aggregate.dart" "${RUNNER_TEMP}/release_notes_input.json"
+
+      # ── Commit onto the release PR branch (no-op if unchanged) ─────────────
+      - name: Commit seeded release notes
+        if: steps.gather.outputs.has_notes == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            "${{ inputs.working_dir }}/assets/whats_new" \
+            "${{ inputs.working_dir }}/android/fastlane/metadata" \
+            "${{ inputs.working_dir }}/ios/fastlane/metadata"
+          if git diff --cached --quiet; then
+            echo 'Release notes already up to date — nothing to commit.'
+            exit 0
+          fi
+          git commit -m "docs: seed ${{ steps.gather.outputs.version }} user-facing release notes"
+          git push origin "HEAD:${{ github.head_ref }}"

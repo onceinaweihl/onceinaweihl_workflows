@@ -11,6 +11,7 @@ Zentrale GitHub Actions für alle onceinaweihl Flutter-Apps. Jede App bindet die
   reusable-ci.yml              # PR-Checks: Lint, Codegen, Tests, Android Build, Security Scan
   reusable-cd.yml              # Release: Build + Sign + Store Upload
   reusable-release-please.yml  # Automatisches Versioning via Conventional Commits
+  reusable-release-notes.yml   # Aggregiert Per-PR Release Notes auf den Release-PR
   reusable-security-nightly.yml # Daily Trivy scan, opens GitHub issue on findings
 
 actions/
@@ -21,6 +22,7 @@ template/
     ci.yml                     # Thin wrapper — kopieren, 3 Werte anpassen
     cd.yml
     release.yml
+    release-notes.yml          # Release-Notes-Aggregation wrapper
     security-nightly.yml       # Daily security scan wrapper
   release-please-config.json
   .release-please-manifest.json
@@ -38,6 +40,7 @@ Kopiere den gesamten Inhalt von `template/` in das Root des neuen App-Repos:
 .github/workflows/ci.yml
 .github/workflows/cd.yml
 .github/workflows/release.yml
+.github/workflows/release-notes.yml
 .github/workflows/security-nightly.yml
 release-please-config.json
 .release-please-manifest.json
@@ -153,11 +156,20 @@ chore:, docs:, refactor:   → kein Release
 
 **Ablauf:**
 
-1. Commits mit Conventional Commit Messages auf `main` pushen
+1. Commits mit Conventional Commit Messages auf `main` pushen — pro PR die
+   `### Release Note (DE/EN)`-Section im PR-Template ausfüllen (oder leer lassen
+   für interne PRs)
 2. release-please öffnet automatisch einen **Release PR** mit Version-Bump und Changelog
-3. Vor dem Merge: Release Notes in `frontend/assets/whats_new/` ergänzen
-4. Release PR mergen → release-please erstellt einen `v1.1.0`-Tag
+3. `reusable-release-notes.yml` sammelt die Release Notes aller PRs des Releases,
+   schreibt sie in `frontend/assets/whats_new/` + die Fastlane-Metadata und
+   committet sie auf den Release-PR (Preview-Kommentar listet alles auf)
+4. Release PR mergen → release-please erstellt einen `v1.1.0`-Tag (Release Notes schon drin)
 5. Tag triggert den CD-Workflow → Build + Store Upload
+
+> Setup pro App: `template/.github/workflows/release-notes.yml` kopieren, das
+> Aggregations-Script `frontend/tool/aggregate_release_notes.dart` und die
+> Release-Note-Section im PR-Template bereitstellen. Details siehe die
+> `docs/release-process.md` der App.
 
 **Tracks via Tag-Suffix:**
 

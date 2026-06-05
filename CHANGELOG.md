@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.9.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.8.0...v1.9.0) (2026-06-05)
+
+
+### Features
+
+* **ci:** make Android debug build opt-out via run_android_build ([13de7dd](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/13de7dd07330835055b89ab04aaeb661ebf0ebef))
+* **ci:** make Android debug build opt-out via run_android_build ([ec8c163](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/ec8c163c6447fd02b1061f0374d0b96397af0cb0))
+* **reusable-release-notes:** aggregate per-PR notes onto release PR ([ec24bb9](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/ec24bb9c3f19335fd6072bf233e255654fc61058))
+* **reusable-release-notes:** aggregate per-PR notes onto release PR ([a38412b](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/a38412bcad98f4c959b54cb50b5e8f1904ba3ded))
+
 ## [1.8.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.7.0...v1.8.0) (2026-05-14)
 
 

@@ -15,6 +15,10 @@ on:
       core_access_app_id:
         type: string
         required: true
+      run_android_build:
+        description: Android Debug Build ausführen (default on)
+        type: boolean
+        default: true
       run_ios_build:
         description: iOS Debug Build ausführen (kostet macOS-Minutes, default off)
         type: boolean
@@ -145,10 +149,11 @@ jobs:
           path: ${{ inputs.working_dir }}/coverage/
 
   # ─────────────────────────────────────────
-  # 4. Android Debug Build
+  # 4. Android Debug Build (opt-out via run_android_build)
   # ─────────────────────────────────────────
   build-android:
     name: Android Debug Build
+    if: inputs.run_android_build
     runs-on: ubuntu-latest
     defaults:
       run:

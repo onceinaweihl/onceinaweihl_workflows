@@ -1,5 +1,18 @@
 name: Release Please — Reusable
 
+# Authors the release PR with a GitHub App token instead of the default
+# GITHUB_TOKEN. This is required, not cosmetic: events produced by
+# GITHUB_TOKEN do NOT trigger further `pull_request`/`push` workflow runs, so
+# with the default token the release PR never runs CI or the release-notes
+# aggregation (reusable-release-notes.yml) — the user-facing What's-New and
+# store changelogs are silently never seeded.
+#
+# Requirements on the CALLER repo:
+#   - vars.CORE_ACCESS_APP_ID and secrets.CORE_ACCESS_APP_KEY are set
+#     (the existing core-access app; propagated here via `secrets: inherit`).
+#   - that app is installed on the repo with contents:write +
+#     pull_requests:write.
+
 on:
   workflow_call:
 
@@ -12,7 +25,19 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     steps:
+      # Mint an app-scoped token so the release PR is authored by the app and
+      # downstream workflows (CI, release-notes) trigger on it.
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.CORE_ACCESS_APP_ID }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+          owner: onceinaweihl
+          repositories: ${{ github.event.repository.name }}
+
       - uses: googleapis/release-please-action@v4
         with:
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

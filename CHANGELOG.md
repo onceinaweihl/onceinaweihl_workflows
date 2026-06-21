@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.0...v1.9.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* author release PR with app token so it triggers downstream workflows ([#17](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/17)) ([3eded15](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/3eded155ccc8c2a1baf50c579bbf6be15101aeac))
+
 ## [1.9.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.8.0...v1.9.0) (2026-06-05)
 
 

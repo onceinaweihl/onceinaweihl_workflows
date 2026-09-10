@@ -17,7 +17,8 @@ on:
         description: >-
           Optional PAT or GitHub App token with contents:write. When set, the
           autofix push is performed under this identity, which DOES re-trigger
-          downstream workflows. Falls back to GITHUB_TOKEN if not provided.
+          downstream workflows. Falls back to a core-access app token, then to
+          GITHUB_TOKEN if not provided.
         required: false
 
 jobs:
@@ -31,12 +32,26 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
+      # Pushes made with GITHUB_TOKEN don't trigger workflows, so the PR's CI
+      # sits in action_required after an autofix commit. Push under the
+      # core-access app instead; where it isn't installed on the repo, the
+      # step fails softly and checkout falls back to GITHUB_TOKEN.
+      - name: Generate app token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.core_access_app_id }}
+          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - uses: actions/checkout@v4
         with:
           # pull_request → check out the PR branch; workflow_dispatch
           # (or anything else) → fall back to the dispatched branch.
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          token: ${{ secrets.autofix_token || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.autofix_token || steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -83,4 +98,4 @@ jobs:
           git add -A
           git commit -m "chore: autofix lockfile, codegen and formatting"
           git push
-          echo "::notice::Autofix commit pushed. CI will only re-run automatically if autofix_token is configured."
+          echo "::notice::Autofix commit pushed. CI re-runs unless the push fell back to GITHUB_TOKEN."

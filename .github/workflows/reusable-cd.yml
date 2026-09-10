@@ -162,6 +162,11 @@ jobs:
       needs.test-gate.result == 'success' &&
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_ANDROID_ENABLED != 'false'
+    # The versionCode is derived from Play, so two overlapping runs would pick
+    # the same one (and a new Play edit invalidates the other run's upload).
+    concurrency:
+      group: cd-android-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     defaults:
       run:

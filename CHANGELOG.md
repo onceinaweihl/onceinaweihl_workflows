@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.2](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.1...v1.9.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **autofix:** push autofix commits with the core-access app token ([#20](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/20)) ([024b473](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/024b473f9ddc0e1da4cf17f0eddcfdb0f82d0f42))
+* **cd:** derive Android versionCode from Play instead of run_number ([#19](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/19)) ([2184800](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/2184800d9fd217e4f9b5b88ec9b0b845d7ad2786))
+* **security:** get the Trivy scans running and reporting again ([#21](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/21)) ([dff7b5d](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/dff7b5d514d4ed06bd72e6010bcbc5f3b97c7f61))
+
 ## [1.9.1](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.0...v1.9.1) (2026-06-21)
 
 

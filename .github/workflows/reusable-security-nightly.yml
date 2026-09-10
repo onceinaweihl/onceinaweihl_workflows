@@ -54,7 +54,7 @@ jobs:
 
       # renovate: datasource=github-releases depName=aquasecurity/trivy
       - name: Set Trivy version
-        run: echo "TRIVY_VERSION=v0.58.1" >> "$GITHUB_ENV"
+        run: echo "TRIVY_VERSION=v0.74.0" >> "$GITHUB_ENV"
 
       # First call: JSON for the issue body. SHA-pinned per supply-chain
       # incident; see reusable-ci.yml for context.

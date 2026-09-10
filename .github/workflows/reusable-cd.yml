@@ -164,9 +164,12 @@ jobs:
       vars.DEPLOY_ANDROID_ENABLED != 'false'
     # The versionCode is derived from Play, so two overlapping runs would pick
     # the same one (and a new Play edit invalidates the other run's upload).
+    # queue: max keeps every waiting run; the default drops all but the newest
+    # pending one without a failure notification.
     concurrency:
-      group: cd-android-${{ github.repository }}
+      group: cd-android-${{ inputs.android_app_id }}
       cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     defaults:
       run:

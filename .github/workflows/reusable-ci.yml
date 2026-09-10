@@ -275,8 +275,11 @@ jobs:
 
       # Upload SARIF even when the previous step failed, so findings show
       # up in the Security tab while the PR is blocked.
+      # Private repos without Advanced Security have Code Scanning disabled
+      # and reject the upload with 403; the Trivy step alone gates the PR.
       - name: Upload SARIF to Security tab
         if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif

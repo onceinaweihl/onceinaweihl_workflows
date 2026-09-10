@@ -92,8 +92,11 @@ jobs:
           skip-setup-trivy: true
           version: ${{ env.TRIVY_VERSION }}
 
+      # Private repos without Advanced Security have Code Scanning disabled
+      # and reject the upload with 403; the tracking issue below still runs.
       - name: Upload SARIF to Security tab
         if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif

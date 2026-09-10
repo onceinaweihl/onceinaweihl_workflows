@@ -285,5 +285,7 @@ jobs:
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif
+          # trivy-action is a composite action: it ignores the job's
+          # working-directory and writes into the workspace root.
+          sarif_file: trivy-results.sarif
           category: trivy-fs

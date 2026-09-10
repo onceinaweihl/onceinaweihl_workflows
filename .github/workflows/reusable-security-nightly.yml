@@ -100,7 +100,7 @@ jobs:
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ inputs.working_dir }}/trivy-results.sarif
+          sarif_file: trivy-results.sarif  # workspace root, see Render step
           category: trivy-nightly
 
       - name: Render findings as Markdown
@@ -116,11 +116,11 @@ jobs:
               with open(os.environ["GITHUB_OUTPUT"], "a") as out:
                   out.write(f"count={n}\n")
 
-          path = pathlib.Path("${{ inputs.working_dir }}/trivy-results.json")
+          # trivy-action is a composite action: its steps ignore the job's
+          # working-directory and write into the workspace root.
+          path = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "trivy-results.json"
           if not path.exists():
-              print("_(no Trivy output file — scan did not run)_")
-              set_count(0)
-              raise SystemExit(0)
+              raise SystemExit(f"{path} missing: the Trivy scan produced no output")
 
           doc = json.loads(path.read_text() or "{}")
           results = doc.get("Results") or []
@@ -170,9 +170,9 @@ jobs:
 
       # create-issue-from-file has no dedupe of its own: it updates only when
       # given an issue-number, otherwise it opens a new issue every night.
+      # With zero findings no issue is opened, but an open one is refreshed.
       - name: Find open tracking issue
         id: issue
-        if: steps.findings.outputs.count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -182,7 +182,7 @@ jobs:
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
       - name: Open or update tracking issue
-        if: steps.findings.outputs.count != '0'
+        if: steps.findings.outputs.count != '0' || steps.issue.outputs.number != ''
         uses: peter-evans/create-issue-from-file@v5
         with:
           title: 'Security: nightly Trivy scan findings'

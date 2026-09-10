@@ -186,7 +186,7 @@ chore:, docs:, refactor:   → kein Release
 Drei Layer, alle automatisch:
 
 1. **Lokaler Stop-Hook** (in `onceinaweihl/claude-plugins` → `trivy_secrets_on_stop.py`): blockt Secrets, bevor sie überhaupt committed werden. Läuft auf jedem Claude-Turn in Flutter-Projekten.
-2. **PR-Gate** (`reusable-ci.yml` → `security-scan` Job): Trivy fs-scan (vuln + secret + misconfig) auf jedem PR. HIGH/CRITICAL blockt den Merge. SARIF wird in den GitHub Security Tab geladen.
+2. **PR-Gate** (`reusable-ci.yml` → `security-scan` Job): Trivy fs-scan (vuln + secret + misconfig) auf jedem PR. HIGH/CRITICAL blockt den Merge. SARIF wird in den GitHub Security Tab geladen, sofern Code Scanning aktiv ist (private Repos ohne Advanced Security lehnen den Upload ab; der Job läuft trotzdem weiter).
 3. **Nightly Scan** (`reusable-security-nightly.yml`): täglich um 04:00 UTC gegen die frisch geladene Trivy-DB. Bei neuen Findings wird ein GitHub Issue geöffnet oder ein bestehendes aktualisiert — kein Build-Fail, damit ein nicht-fixbares Finding nicht permanent `main` rot färbt.
 
 ### PR-Gate konfigurieren

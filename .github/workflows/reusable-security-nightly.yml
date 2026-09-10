@@ -37,6 +37,11 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.working_dir }}
+    env:
+      # Job-level env so the renovate regex manager (annotation directly
+      # above a `key: value` line) can track the binary version.
+      # renovate: datasource=github-releases depName=aquasecurity/trivy
+      TRIVY_VERSION: v0.74.0
     steps:
       - uses: actions/checkout@v4
 
@@ -51,10 +56,6 @@ jobs:
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
 
       - run: flutter pub get
-
-      # renovate: datasource=github-releases depName=aquasecurity/trivy
-      - name: Set Trivy version
-        run: echo "TRIVY_VERSION=v0.74.0" >> "$GITHUB_ENV"
 
       # First call: JSON for the issue body. SHA-pinned per supply-chain
       # incident; see reusable-ci.yml for context.
@@ -103,15 +104,22 @@ jobs:
           category: trivy-nightly
 
       - name: Render findings as Markdown
+        id: findings
         shell: bash
         run: |
           python3 - <<'PY' > "$GITHUB_WORKSPACE/findings.md"
           import json
+          import os
           import pathlib
+
+          def set_count(n):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+                  out.write(f"count={n}\n")
 
           path = pathlib.Path("${{ inputs.working_dir }}/trivy-results.json")
           if not path.exists():
               print("_(no Trivy output file — scan did not run)_")
+              set_count(0)
               raise SystemExit(0)
 
           doc = json.loads(path.read_text() or "{}")
@@ -141,6 +149,7 @@ jobs:
                       "",
                   ))
 
+          set_count(len(rows))
           if not rows:
               print("_(0 findings)_")
               raise SystemExit(0)
@@ -159,12 +168,24 @@ jobs:
           print("Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           PY
 
+      # create-issue-from-file has no dedupe of its own: it updates only when
+      # given an issue-number, otherwise it opens a new issue every night.
+      - name: Find open tracking issue
+        id: issue
+        if: steps.findings.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search 'in:title "Security: nightly Trivy scan findings"' --json number,title \
+            --jq '[.[] | select(.title == "Security: nightly Trivy scan findings")][0].number // empty')
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
       - name: Open or update tracking issue
+        if: steps.findings.outputs.count != '0'
         uses: peter-evans/create-issue-from-file@v5
         with:
           title: 'Security: nightly Trivy scan findings'
           content-filepath: findings.md
           labels: security,nightly-scan
-          # Re-uses existing open issue with the same title (one open
-          # issue per repo at any time, body refreshed on each run).
-          update-existing: true
+          issue-number: ${{ steps.issue.outputs.number }}

@@ -230,6 +230,12 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.working_dir }}
+    env:
+      # Trivy binary version. Action and binary versions are independent;
+      # both pinned for reproducibility. Job-level env so the renovate regex
+      # manager (annotation directly above a `key: value` line) tracks it.
+      # renovate: datasource=github-releases depName=aquasecurity/trivy
+      TRIVY_VERSION: v0.74.0
     steps:
       - uses: actions/checkout@v4
 
@@ -248,12 +254,6 @@ jobs:
 
       - run: flutter pub get
 
-      # Trivy binary version. Action and binary versions are independent;
-      # both pinned for reproducibility.
-      # renovate: datasource=github-releases depName=aquasecurity/trivy
-      - name: Set Trivy version
-        run: echo "TRIVY_VERSION=v0.74.0" >> "$GITHUB_ENV"
-
       # SHA-pinned to v0.36.0 per March 2026 supply-chain incident.
       # renovate: action=aquasecurity/trivy-action
       - name: Run Trivy
@@ -267,6 +267,9 @@ jobs:
           exit-code: '1'             # fail the step on any matching finding
           format: sarif
           output: trivy-results.sarif
+          # Without this, trivy-action drops TRIVY_SEVERITY for SARIF and the
+          # gate fails on any LOW/MEDIUM finding, ignoring security_severity.
+          limit-severities-for-sarif: true
           version: ${{ env.TRIVY_VERSION }}
         env:
           # Trivy DB mirrored to GHCR; Docker Hub ratelimits bite us otherwise.

@@ -206,6 +206,41 @@ jobs:
             echo "$EN" > whatsnew/whatsnew-en-US
           fi
 
+      # Highest versionCode on any Play track + 1. github.run_number falls
+      # behind codes uploaded outside CI (local deploys), and Play rejects a
+      # release that isn't above the current one. Plain openssl/curl/jq so
+      # apps without an android/Gemfile keep working.
+      - name: Nächsten versionCode aus Google Play ermitteln
+        id: version_code
+        env:
+          PLAY_JSON_KEY: ${{ secrets.GOOGLE_PLAY_JSON_KEY }}
+          PACKAGE: ${{ inputs.android_app_id }}
+        run: |
+          set -o pipefail
+          b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
+
+          NOW=$(date +%s)
+          HEADER=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+          CLAIMS=$(jq -nc --arg iss "$(jq -r .client_email <<<"$PLAY_JSON_KEY")" --argjson now "$NOW" \
+            '{iss: $iss, scope: "https://www.googleapis.com/auth/androidpublisher",
+              aud: "https://oauth2.googleapis.com/token", iat: $now, exp: ($now + 600)}' | b64url)
+          SIG=$(printf '%s.%s' "$HEADER" "$CLAIMS" \
+            | openssl dgst -sha256 -sign <(jq -r .private_key <<<"$PLAY_JSON_KEY") | b64url)
+          TOKEN=$(curl -fsS https://oauth2.googleapis.com/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+            -d assertion="$HEADER.$CLAIMS.$SIG" | jq -r .access_token)
+          echo "::add-mask::$TOKEN"
+
+          API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE/edits"
+          AUTH="Authorization: Bearer $TOKEN"
+          EDIT=$(curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" -d '{}' "$API" | jq -r .id)
+          HIGHEST=$(curl -fsS -H "$AUTH" "$API/$EDIT/tracks" \
+            | jq '[.tracks[]?.releases[]?.versionCodes[]? | tonumber] | max // 0')
+          curl -fsS -X DELETE -H "$AUTH" "$API/$EDIT" >/dev/null
+
+          echo "Höchster versionCode auf Google Play: $HIGHEST"
+          echo "code=$((HIGHEST + 1))" >> "$GITHUB_OUTPUT"
+
       - name: Build Android AAB
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -213,13 +248,14 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
+          VERSION_CODE: ${{ steps.version_code.outputs.code }}
         run: |
           VERSION_NAME="${{ needs.resolve-context.outputs.version_name }}"
           if [ -n "$VERSION_NAME" ]; then
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${{ github.run_number }}/" pubspec.yaml
+            sed -i "s/^version: .*/version: ${VERSION_NAME}+${VERSION_CODE}/" pubspec.yaml
           fi
           flutter build appbundle --release \
-            --build-number=${{ github.run_number }} \
+            --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/app/outputs/symbols \
             --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \

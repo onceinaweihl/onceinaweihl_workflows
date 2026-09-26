@@ -21,6 +21,13 @@ on:
       coverage_threshold:
         type: number
         default: 70
+      coverage_exclude:
+        description: >-
+          Regex (awk ERE) auf die Dateipfade in lcov.info; passende Dateien
+          zählen nicht zur Coverage. Default: generierter Code (build_runner,
+          freezed, slang, objectbox). Leer = alles zählt.
+        type: string
+        default: '\.g\.dart$|\.freezed\.dart$'
       has_screenshots:
         description: Screenshot-Generierung ausführen und in Stores hochladen
         type: boolean
@@ -105,6 +112,7 @@ jobs:
         shell: bash
         env:
           MIN_COVERAGE: ${{ inputs.coverage_threshold }}
+          COVERAGE_EXCLUDE: ${{ inputs.coverage_exclude }}
         # Same computation as reusable-ci.yml: straight from lcov.info, and an
         # unmeasurable coverage fails instead of passing.
         run: |
@@ -114,7 +122,15 @@ jobs:
             echo "::error::$LCOV fehlt oder ist leer — Coverage nicht messbar"
             exit 1
           fi
-          read -r HIT FOUND < <(awk -F: '/^LH:/ {h += $2} /^LF:/ {f += $2} END {print h + 0, f + 0}' "$LCOV")
+          read -r HIT FOUND SKIPPED < <(awk -F: '
+            BEGIN { ex = ENVIRON["COVERAGE_EXCLUDE"] }
+            /^SF:/ { skip = (ex != "" && substr($0, 4) ~ ex); if (skip) n++ }
+            /^LH:/ && !skip { h += $2 }
+            /^LF:/ && !skip { f += $2 }
+            END { print h + 0, f + 0, n + 0 }' "$LCOV")
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "Ohne ${SKIPPED} Datei(en) passend zu coverage_exclude: ${COVERAGE_EXCLUDE}"
+          fi
           if [ "$FOUND" -eq 0 ]; then
             echo "::error::$LCOV enthält keine Zeilen (LF=0) — Coverage nicht messbar"
             exit 1

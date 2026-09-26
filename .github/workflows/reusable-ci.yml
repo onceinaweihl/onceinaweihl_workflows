@@ -133,12 +133,29 @@ jobs:
             $(find test -name "*_test.dart" ! -path "test/screenshots/*" | tr '\n' ' ')
 
       - name: Check coverage threshold (${{ inputs.coverage_threshold }}%)
+        shell: bash
+        env:
+          MIN_COVERAGE: ${{ inputs.coverage_threshold }}
+        # Computed from lcov.info's LH/LF records directly, without relying on
+        # an `lcov` binary on the runner. The old `lcov --summary | grep` parse
+        # left TOTAL empty on any failure, which the bc comparison read as
+        # "not below" — the gate then passed without measuring anything.
         run: |
-          TOTAL=$(lcov --summary coverage/lcov.info 2>&1 \
-            | grep "lines" | grep -oP '[\d.]+(?=%)' | head -1)
-          echo "Coverage: ${TOTAL}%"
-          if (( $(echo "$TOTAL < ${{ inputs.coverage_threshold }}" | bc -l) )); then
-            echo "FAIL: Coverage ${TOTAL}% unter Schwelle (${{ inputs.coverage_threshold }}%)"
+          set -euo pipefail
+          LCOV=coverage/lcov.info
+          if [ ! -s "$LCOV" ]; then
+            echo "::error::$LCOV fehlt oder ist leer — Coverage nicht messbar"
+            exit 1
+          fi
+          read -r HIT FOUND < <(awk -F: '/^LH:/ {h += $2} /^LF:/ {f += $2} END {print h + 0, f + 0}' "$LCOV")
+          if [ "$FOUND" -eq 0 ]; then
+            echo "::error::$LCOV enthält keine Zeilen (LF=0) — Coverage nicht messbar"
+            exit 1
+          fi
+          TOTAL=$(awk -v h="$HIT" -v f="$FOUND" 'BEGIN {printf "%.2f", 100 * h / f}')
+          echo "Coverage: ${TOTAL}% (${HIT}/${FOUND} Zeilen)"
+          if awk -v t="$TOTAL" -v min="$MIN_COVERAGE" 'BEGIN {exit !(t < min)}'; then
+            echo "::error::Coverage ${TOTAL}% unter Schwelle (${MIN_COVERAGE}%)"
             exit 1
           fi
           echo "PASS"

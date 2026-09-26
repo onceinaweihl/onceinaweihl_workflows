@@ -2,14 +2,5 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>onceinaweihl/renovate-config#v1.4.0"
-  ],
-  "packageRules": [
-    {
-      "description": "Self-references (setup-core-auth, template reusable-workflow refs) carry `# x-release-please-version` and are bumped by release-please with every release; Renovate must not touch them.",
-      "matchPackageNames": [
-        "onceinaweihl/onceinaweihl_workflows"
-      ],
-      "enabled": false
-    }
   ]
 }

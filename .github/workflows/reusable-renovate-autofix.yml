@@ -75,7 +75,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}

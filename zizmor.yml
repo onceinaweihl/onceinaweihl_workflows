@@ -4,8 +4,8 @@ rules:
     config:
       policies:
         # Our own reusable workflows and actions are pinned to release tags,
-        # which release-please bumps (x-release-please-version); everything
-        # third-party must be pinned to a commit SHA.
+        # which Renovate bumps after each release; everything third-party
+        # must be pinned to a commit SHA.
         "onceinaweihl/*": ref-pin
         "*": hash-pin
   artipacked:

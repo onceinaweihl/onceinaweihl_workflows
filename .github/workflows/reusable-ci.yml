@@ -46,14 +46,16 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -76,14 +78,16 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -110,14 +114,16 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -126,11 +132,12 @@ jobs:
 
       - name: Run tests with coverage
         run: |
+          mapfile -t tests < <(find test -name "*_test.dart" ! -path "test/screenshots/*")
           flutter test \
             --coverage \
             --coverage-path=coverage/lcov.info \
             --exclude-tags=integration \
-            $(find test -name "*_test.dart" ! -path "test/screenshots/*" | tr '\n' ' ')
+            "${tests[@]}"
 
       - name: Check coverage threshold (${{ inputs.coverage_threshold }}%)
         shell: bash
@@ -160,7 +167,7 @@ jobs:
           fi
           echo "PASS"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-report
           path: ${{ inputs.working_dir }}/coverage/
@@ -176,19 +183,21 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           java-version: '17'
           distribution: temurin
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -207,17 +216,21 @@ jobs:
       run:
         working-directory: ${{ inputs.working_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Select Xcode ${{ inputs.xcode_version }}
-        run: sudo xcode-select -s /Applications/Xcode_${{ inputs.xcode_version }}.app
+        env:
+          XCODE_VERSION: ${{ inputs.xcode_version }}
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -254,17 +267,19 @@ jobs:
       # renovate: datasource=github-releases depName=aquasecurity/trivy
       TRIVY_VERSION: v0.74.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # Generate the pubspec.lock + transitive lockfiles Trivy needs to
       # resolve Dart vulns. Doing this before the scan means findings
       # don't depend on whether Renovate has run on this branch yet.
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -300,7 +315,7 @@ jobs:
       - name: Upload SARIF to Security tab
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
         with:
           # trivy-action is a composite action: it ignores the job's
           # working-directory and writes into the workspace root.

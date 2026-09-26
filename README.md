@@ -46,6 +46,8 @@ release-please-config.json
 .release-please-manifest.json
 ```
 
+Die Templates referenzieren die Reusable Workflows über einen Release-Tag (`@vX.Y.Z`), nicht über `@main` — Änderungen hier kommen erst mit einem Release und dann per Renovate-PR in die Apps.
+
 ### 2. App-spezifische Werte anpassen
 
 In `.github/workflows/ci.yml`:
@@ -223,7 +225,18 @@ CVE-2024-12345
 
 ### Supply-Chain-Pinning
 
-Die `aquasecurity/trivy-action` ist auf Commit-SHA gepinnt, nicht auf Tag — im März 2026 wurden bei dieser Action 75 Tags auf malicious Commits umgebogen. Renovate hält den Pin frisch via `# renovate: action=...` Annotation. **Pin nicht** auf einen floating Tag wechseln.
+Alle Third-Party-Actions sind auf Commit-SHA gepinnt (`uses: owner/action@<sha> # vX.Y.Z`), nicht auf Tags — im März 2026 wurden bei `aquasecurity/trivy-action` 75 Tags auf malicious Commits umgebogen, und jede Action in `reusable-cd.yml` sieht Signing- und Store-Secrets. Renovate aktualisiert SHA und Versions-Kommentar gemeinsam. **Nicht** auf einen floating Tag zurückwechseln.
+
+Eigene Referenzen (`setup-core-auth`, die Reusable Workflows in `template/`) sind auf den Release-Tag gepinnt und tragen `# x-release-please-version`: release-please setzt sie mit jedem Release auf die neue Version, Renovate lässt sie in diesem Repo in Ruhe.
+
+### Workflow-Lint
+
+`.github/workflows/lint.yml` läuft auf jedem PR:
+
+- **actionlint** — Syntax, Expressions, shellcheck auf allen `run:`-Blöcken (Konfiguration: `.github/actionlint.yaml`)
+- **zizmor** — Security-Audit: Template-Injection, ungepinnte Actions, Token-Scopes, Credential-Persistenz (Konfiguration und begründete Ausnahmen: `zizmor.yml`)
+
+`${{ … }}` gehört nie direkt in einen `run:`-Block — Werte immer über `env:` durchreichen.
 
 ---
 

@@ -49,14 +49,14 @@ jobs:
     if: ${{ github.event.pull_request != null && startsWith(github.head_ref, inputs.release_branch_prefix) }}
     steps:
       - name: Checkout the release PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.head_ref }}
 
       # ── Collect the release notes from every PR in this release ────────────
       - name: Gather release notes from PRs
         id: gather
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const fs = require('fs');
@@ -148,31 +148,38 @@ jobs:
       # ── Run the app's aggregator (pure Dart; no pub get / core auth) ────────
       - name: Setup Dart
         if: steps.gather.outputs.has_notes == 'true'
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
 
       - name: Aggregate into release-notes files
         if: steps.gather.outputs.has_notes == 'true'
+        env:
+          WORKING_DIR: ${{ inputs.working_dir }}
+          AGGREGATOR_SCRIPT: ${{ inputs.aggregator_script }}
         # Run the script from a pubspec-free temp dir (so Dart does not trigger
         # an implicit `pub get` of the app's private git deps) but with the CWD
         # set to working_dir so its relative file paths resolve.
         run: |
-          cp "${{ inputs.working_dir }}/${{ inputs.aggregator_script }}" "${RUNNER_TEMP}/aggregate.dart"
-          cd "${{ inputs.working_dir }}"
+          cp "${WORKING_DIR}/${AGGREGATOR_SCRIPT}" "${RUNNER_TEMP}/aggregate.dart"
+          cd "${WORKING_DIR}"
           dart "${RUNNER_TEMP}/aggregate.dart" "${RUNNER_TEMP}/release_notes_input.json"
 
       # ── Commit onto the release PR branch (no-op if unchanged) ─────────────
       - name: Commit seeded release notes
         if: steps.gather.outputs.has_notes == 'true'
+        env:
+          WORKING_DIR: ${{ inputs.working_dir }}
+          VERSION: ${{ steps.gather.outputs.version }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            "${{ inputs.working_dir }}/assets/whats_new" \
-            "${{ inputs.working_dir }}/android/fastlane/metadata" \
-            "${{ inputs.working_dir }}/ios/fastlane/metadata"
+            "${WORKING_DIR}/assets/whats_new" \
+            "${WORKING_DIR}/android/fastlane/metadata" \
+            "${WORKING_DIR}/ios/fastlane/metadata"
           if git diff --cached --quiet; then
             echo 'Release notes already up to date — nothing to commit.'
             exit 0
           fi
-          git commit -m "docs: seed ${{ steps.gather.outputs.version }} user-facing release notes"
-          git push origin "HEAD:${{ github.head_ref }}"
+          git commit -m "docs: seed ${VERSION} user-facing release notes"
+          git push origin "HEAD:${HEAD_REF}"

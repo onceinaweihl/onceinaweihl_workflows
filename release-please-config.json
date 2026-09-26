@@ -5,7 +5,20 @@
   "bump-minor-pre-major": true,
   "packages": {
     ".": {
-      "package-name": "onceinaweihl_workflows"
+      "package-name": "onceinaweihl_workflows",
+      "extra-files": [
+        ".github/workflows/reusable-build-android-apk.yml",
+        ".github/workflows/reusable-cd.yml",
+        ".github/workflows/reusable-ci.yml",
+        ".github/workflows/reusable-regenerate-codegen.yml",
+        ".github/workflows/reusable-renovate-autofix.yml",
+        ".github/workflows/reusable-security-nightly.yml",
+        "template/.github/workflows/cd.yml",
+        "template/.github/workflows/ci.yml",
+        "template/.github/workflows/release-notes.yml",
+        "template/.github/workflows/release.yml",
+        "template/.github/workflows/security-nightly.yml"
+      ]
     }
   }
 }

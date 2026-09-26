@@ -11,10 +11,14 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   cd:
-    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-cd.yml@main
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-cd.yml@v1.9.2 # x-release-please-version
     with:
+      # renovate: datasource=flutter-version depName=flutter
       flutter_version: '3.41.4'                    # ← anpassen
       working_dir: frontend                          # ← anpassen falls abweichend
       android_app_id: de.onceinaweihl.APPNAME        # ← anpassen

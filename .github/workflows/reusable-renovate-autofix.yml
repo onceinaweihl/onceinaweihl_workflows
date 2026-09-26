@@ -13,6 +13,13 @@ on:
         type: string
         required: true
     secrets:
+      CORE_ACCESS_APP_KEY:
+        description: >-
+          Private key for the Onceinaweihl Core Access GitHub App, used to
+          authenticate `flutter pub get` and the autofix push. Arrives via
+          `secrets: inherit`; declared so callers passing secrets explicitly
+          can hand it over too.
+        required: false
       autofix_token:
         description: >-
           Optional PAT or GitHub App token with contents:write. When set, the
@@ -39,7 +46,7 @@ jobs:
       - name: Generate app token
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -47,7 +54,7 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # pull_request → check out the PR branch; workflow_dispatch
           # (or anything else) → fall back to the dispatched branch.
@@ -63,12 +70,12 @@ jobs:
             echo "::warning::Core-access app token unavailable (app not installed on this repo?). An autofix push falls back to GITHUB_TOKEN and CI on it will sit in action_required."
           fi
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}

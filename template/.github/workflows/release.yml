@@ -10,5 +10,5 @@ permissions:
 
 jobs:
   release-please:
-    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-please.yml@main
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-please.yml@v1.9.2 # x-release-please-version
     secrets: inherit

@@ -43,14 +43,16 @@ jobs:
       # renovate: datasource=github-releases depName=aquasecurity/trivy
       TRIVY_VERSION: v0.74.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@main
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2 # x-release-please-version
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -98,7 +100,7 @@ jobs:
       - name: Upload SARIF to Security tab
         if: always()
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
         with:
           sarif_file: trivy-results.sarif  # workspace root, see Render step
           category: trivy-nightly
@@ -106,6 +108,9 @@ jobs:
       - name: Render findings as Markdown
         id: findings
         shell: bash
+        env:
+          SEVERITY: ${{ inputs.severity }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 - <<'PY' > "$GITHUB_WORKSPACE/findings.md"
           import json
@@ -154,7 +159,7 @@ jobs:
               print("_(0 findings)_")
               raise SystemExit(0)
 
-          print(f"**{len(rows)} finding(s)** at severity ${{ inputs.severity }}.")
+          print(f"**{len(rows)} finding(s)** at severity {os.environ['SEVERITY']}.")
           print()
           print("| Target | Severity | Package | Installed | Fixed | ID |")
           print("|--------|----------|---------|-----------|-------|----|")
@@ -165,7 +170,7 @@ jobs:
           print()
           print("---")
           print()
-          print("Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          print(f"Run: {os.environ['RUN_URL']}")
           PY
 
       # create-issue-from-file has no dedupe of its own: it updates only when
@@ -183,7 +188,7 @@ jobs:
 
       - name: Open or update tracking issue
         if: steps.findings.outputs.count != '0' || steps.issue.outputs.number != ''
-        uses: peter-evans/create-issue-from-file@v5
+        uses: peter-evans/create-issue-from-file@e8ef132d6df98ed982188e460ebb3b5d4ef3a9cd # v5.0.1
         with:
           title: 'Security: nightly Trivy scan findings'
           content-filepath: findings.md

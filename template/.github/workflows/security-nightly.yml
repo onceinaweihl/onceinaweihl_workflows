@@ -13,8 +13,9 @@ permissions:
 
 jobs:
   scan:
-    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-security-nightly.yml@main
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-security-nightly.yml@v1.9.2 # x-release-please-version
     with:
+      # renovate: datasource=flutter-version depName=flutter
       flutter_version: '3.41.4'         # ← anpassen
       working_dir: frontend              # ← anpassen falls abweichend
       core_access_app_id: ${{ vars.CORE_ACCESS_APP_ID }}

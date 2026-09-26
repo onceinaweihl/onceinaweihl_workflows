@@ -1,0 +1,26 @@
+# Configuration for zizmor (https://docs.zizmor.sh), run by .github/workflows/lint.yml.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Our own reusable workflows and actions are pinned to release tags,
+        # which release-please bumps (x-release-please-version); everything
+        # third-party must be pinned to a commit SHA.
+        "onceinaweihl/*": ref-pin
+        "*": hash-pin
+  artipacked:
+    ignore:
+      # These jobs push a commit back to the checked-out branch and need the
+      # persisted credentials to do so.
+      - reusable-renovate-autofix.yml
+      - reusable-regenerate-codegen.yml
+      - reusable-release-notes.yml
+  secrets-inherit:
+    ignore:
+      # The app templates pass everything on: the reusable workflows do not
+      # declare their secrets yet. Replace with explicit `secrets:` once they do.
+      - cd.yml
+      - ci.yml
+      - release.yml
+      - release-notes.yml
+      - security-nightly.yml

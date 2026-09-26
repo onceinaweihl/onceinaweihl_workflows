@@ -19,6 +19,12 @@ on:
           freezed, slang, objectbox). Leer = alles zählt.
         type: string
         default: '\.g\.dart$|\.freezed\.dart$'
+      extra_tests:
+        description: >-
+          Zusätzliche Testdateien außerhalb von test/, relativ zu working_dir,
+          durch Leerzeichen getrennt (z. B. Tests der tool/-Skripte).
+        type: string
+        default: ''
       core_access_app_id:
         type: string
         required: true
@@ -138,13 +144,16 @@ jobs:
       - run: flutter pub get
 
       - name: Run tests with coverage
+        env:
+          EXTRA_TESTS: ${{ inputs.extra_tests }}
         run: |
           mapfile -t tests < <(find test -name "*_test.dart" ! -path "test/screenshots/*")
+          read -r -a extra <<< "$EXTRA_TESTS"
           flutter test \
             --coverage \
             --coverage-path=coverage/lcov.info \
             --exclude-tags=integration \
-            "${tests[@]}"
+            "${tests[@]}" "${extra[@]}"
 
       - name: Check coverage threshold (${{ inputs.coverage_threshold }}%)
         shell: bash

@@ -28,6 +28,12 @@ on:
           freezed, slang, objectbox). Leer = alles zählt.
         type: string
         default: '\.g\.dart$|\.freezed\.dart$'
+      extra_tests:
+        description: >-
+          Zusätzliche Testdateien außerhalb von test/, relativ zu working_dir,
+          durch Leerzeichen getrennt (z. B. Tests der tool/-Skripte).
+        type: string
+        default: ''
       has_screenshots:
         description: Screenshot-Generierung ausführen und in Stores hochladen
         type: boolean
@@ -104,9 +110,12 @@ jobs:
       - run: flutter analyze --fatal-infos
 
       - name: Run tests with coverage
+        env:
+          EXTRA_TESTS: ${{ inputs.extra_tests }}
         run: |
           mapfile -t tests < <(find test -name "*_test.dart" ! -path "test/screenshots/*")
-          flutter test --coverage "${tests[@]}"
+          read -r -a extra <<< "$EXTRA_TESTS"
+          flutter test --coverage "${tests[@]}" "${extra[@]}"
 
       - name: Coverage Gate (${{ inputs.coverage_threshold }}%)
         shell: bash

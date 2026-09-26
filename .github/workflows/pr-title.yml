@@ -1,0 +1,35 @@
+name: PR title
+
+# release-please reads the squash commit, and GitHub titles a squash commit
+# after the PR. A title that is not a conventional commit is skipped without a
+# word, so the change never reaches a release or the changelog. This check
+# fails the PR instead, while the title can still be edited.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    name: Conventional commit title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|chore|ci|test|refactor|perf|build|style|revert)(\([A-Za-z0-9._/-]+\))?!?: [^ ]'
+          if [[ "$TITLE" =~ $pattern ]]; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          echo "::error title=PR title::Not a conventional commit. Use 'type(scope): summary', e.g. 'fix(ci): …' — types: feat fix docs chore ci test refactor perf build style revert."
+          printf 'Title was: %s\n' "$TITLE"
+          exit 1

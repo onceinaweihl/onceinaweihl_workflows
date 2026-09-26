@@ -55,6 +55,7 @@ In `.github/workflows/ci.yml`:
 flutter_version: '3.41.4'       # aktuelle Flutter-Version
 working_dir: frontend            # Pfad zum Flutter-Projekt
 coverage_threshold: 70           # Mindestzahl für Test-Coverage in %
+# coverage_exclude: '\.g\.dart$|\.freezed\.dart$'  # Default; Regex auf lcov-Pfade, die nicht zählen
 ```
 
 In `.github/workflows/cd.yml`:

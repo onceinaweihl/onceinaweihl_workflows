@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.10.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.2...v1.10.0) (2026-09-26)
+
+
+### Features
+
+* **ci:** leave generated code out of the coverage gate ([ad5f794](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/ad5f7943c17f244f2053cde24cc5d1b3dadde75c))
+* **ci:** run test files outside test/ through extra_tests ([a28b8ee](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/a28b8ee0e729fea81392f3679e033b8ff2b164b3))
+
+
+### Bug Fixes
+
+* **cd:** drop the unused Slack failure notification ([3fac3b7](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/3fac3b74f3c3916c4051271f72b61dd294df191d))
+* **ci:** compute coverage from lcov.info and fail when it can't be measured ([3fac3b7](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/3fac3b74f3c3916c4051271f72b61dd294df191d))
+* **release-notes:** end a Release Note section at the next heading or rule ([ad5f794](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/ad5f7943c17f244f2053cde24cc5d1b3dadde75c))
+* **release:** let release-please open its PR again ([a28b8ee](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/a28b8ee0e729fea81392f3679e033b8ff2b164b3))
+* **security:** pin actions to SHAs, pin own refs to release tags ([3fac3b7](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/3fac3b74f3c3916c4051271f72b61dd294df191d))
+
 ## [1.9.2](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.1...v1.9.2) (2026-09-10)
 
 

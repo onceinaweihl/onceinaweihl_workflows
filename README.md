@@ -223,7 +223,7 @@ CVE-2024-12345
 
 Alle Third-Party-Actions sind auf Commit-SHA gepinnt (`uses: owner/action@<sha> # vX.Y.Z`), nicht auf Tags — im März 2026 wurden bei `aquasecurity/trivy-action` 75 Tags auf malicious Commits umgebogen, und jede Action in `reusable-cd.yml` sieht Signing- und Store-Secrets. Renovate aktualisiert SHA und Versions-Kommentar gemeinsam. **Nicht** auf einen floating Tag zurückwechseln.
 
-Eigene Referenzen (`setup-core-auth`, die Reusable Workflows in `template/`) sind auf den Release-Tag gepinnt und tragen `# x-release-please-version`: release-please setzt sie mit jedem Release auf die neue Version, Renovate lässt sie in diesem Repo in Ruhe.
+Eigene Referenzen (`setup-core-auth`, die Reusable Workflows in `template/`) sind auf den Release-Tag gepinnt. Nach jedem Release hebt Renovate sie per PR auf den neuen Tag; ein Release enthält also die Referenzen des vorherigen. release-please fasst Dateien unter `.github/workflows/` bewusst nicht an: Mit dem `GITHUB_TOKEN` darf es dort nicht schreiben, und der Release-PR käme sonst gar nicht zustande.
 
 ### Workflow-Lint
 

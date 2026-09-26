@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   cd:
-    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-cd.yml@v1.9.2 # x-release-please-version
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-cd.yml@v1.9.2
     with:
       # renovate: datasource=flutter-version depName=flutter
       flutter_version: '3.41.4'                    # ← anpassen

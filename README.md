@@ -131,12 +131,6 @@ Unter **Settings → Secrets and variables → Actions → Secrets**:
 | `WIREDASH_PROJECT_ID` | Wiredash Project ID |
 | `WIREDASH_SECRET` | Wiredash Secret |
 
-**Notifications**
-
-| Secret | Beschreibung |
-|---|---|
-| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL für Fehler-Notifications |
-
 ### 5. Actions-Zugriff auf dieses Repo erlauben
 
 Im App-Repo unter **Settings → Actions → General**:

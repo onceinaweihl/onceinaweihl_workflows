@@ -74,19 +74,28 @@ jobs:
             // Parse one PR body into { icon, de:{title,description}, en:{...} }.
             const parseNote = (body) => {
               if (!body) return { icon: '', de: blank(), en: blank() };
-              const clean = body.replace(/<!--[\s\S]*?-->/g, '');
+              const clean = body.replace(/\r\n?/g, '\n').replace(/<!--[\s\S]*?-->/g, '');
               const icon = (clean.match(/^\s*icon:\s*([a-z_]+)\s*$/im) || [])[1] || '';
               const lang = (tag) => {
-                const re = new RegExp(
-                  `###\\s*Release Note \\(${tag}\\)\\s*\\n([\\s\\S]*?)(?=\\n#{1,6}\\s|$)`, 'i');
-                const m = clean.match(re);
+                const m = clean.match(new RegExp(`###\\s*Release Note \\(${tag}\\)[ \\t]*\\n([\\s\\S]*)`, 'i'));
                 if (!m) return blank();
-                const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+                // The section ends at the next heading or thematic break. When
+                // it is the last one in the PR body, whatever tools append to
+                // the body (a "Generated with …" signature, a session link)
+                // would otherwise ship as store and in-app release notes.
+                const lines = [];
+                for (const raw of m[1].split('\n')) {
+                  const line = raw.trim();
+                  if (/^#{1,6}\s/.test(line) || /^([-*_])(\s*\1){2,}$/.test(line)) break;
+                  if (!line || APPENDED_FOOTER.test(line)) continue;
+                  lines.push(line);
+                }
                 return { title: lines[0] || '', description: lines.slice(1).join(' ').trim() };
               };
               return { icon, de: lang('DE'), en: lang('EN') };
             };
             function blank() { return { title: '', description: '' }; }
+            const APPENDED_FOOTER = /generated with|claude\.ai\/code|co-authored-by:|^\u{1F916}/iu;
 
             // The release-please PR branch only holds the release commit; the
             // feature commits are already on main. release-please instead lists

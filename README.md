@@ -162,7 +162,10 @@ chore:, docs:, refactor:   → kein Release
 2. release-please öffnet automatisch einen **Release PR** mit Version-Bump und Changelog
 3. `reusable-release-notes.yml` sammelt die Release Notes aller PRs des Releases,
    schreibt sie in `frontend/assets/whats_new/` + die Fastlane-Metadata und
-   committet sie auf den Release-PR (Preview-Kommentar listet alles auf)
+   committet sie auf den Release-PR (Preview-Kommentar listet alles auf).
+   Ein `feat`-, `fix`- oder `perf`-PR (außer `fix(deps)`) ohne Release Note
+   macht den Check rot; für einen Fix, den Nutzer wirklich nicht bemerken,
+   den PR mit `no-release-note` labeln und den Check neu starten
 4. Release PR mergen → release-please erstellt einen `v1.1.0`-Tag (Release Notes schon drin)
 5. Tag triggert den CD-Workflow → Build + Store Upload
 

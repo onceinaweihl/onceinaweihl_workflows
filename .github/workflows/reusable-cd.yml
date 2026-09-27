@@ -297,6 +297,16 @@ jobs:
             echo "$DE" > whatsnew/whatsnew-de-DE
             echo "$EN" > whatsnew/whatsnew-en-US
           fi
+          # The generator exits 0 when the JSON has no entry for this version
+          # ("No files written."), and Play then ships the release with no
+          # "What's new" at all. A generic line beats an empty one; the
+          # warning shows up on the run summary.
+          if ! compgen -G 'whatsnew/whatsnew-*' > /dev/null; then
+            echo "::warning::No release notes for ${VERSION_NAME} in assets/whats_new; Google Play gets a generic text."
+            mkdir -p whatsnew
+            echo 'Fehlerbehebungen und Verbesserungen.' > whatsnew/whatsnew-de-DE
+            echo 'Bug fixes and improvements.' > whatsnew/whatsnew-en-US
+          fi
 
       # Highest versionCode on any Play track + 1. github.run_number falls
       # behind codes uploaded outside CI (local deploys), and Play rejects a

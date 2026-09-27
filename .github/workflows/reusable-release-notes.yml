@@ -102,8 +102,15 @@ jobs:
             // every change in its PR body as `#NNN` references — collect those.
             const refs = [...new Set([...(pr.body || '').matchAll(/#(\d+)/g)].map((m) => Number(m[1])))]
               .filter((n) => n !== pr.number);
+            // A feat, fix or perf PR changes what users get; one without a note
+            // leaves the store and the in-app sheet silent about it. deps PRs
+            // are exempt, and so is any PR labelled NO_NOTE_LABEL, for a fix
+            // that really is invisible to users.
+            const USER_FACING = /^(feat|fix|perf)(\((?!deps(-dev)?\))[^)]*\))?!?:/i;
+            const NO_NOTE_LABEL = 'no-release-note';
             const notes = [];
             const emptyPRs = [];
+            const missing = [];
             for (const num of refs) {
               let apr;
               try {
@@ -116,6 +123,8 @@ jobs:
                 notes.push({ pr: num, ...note });
               } else {
                 emptyPRs.push({ pr: num, title: apr.title });
+                const optedOut = (apr.labels || []).some((l) => l.name === NO_NOTE_LABEL);
+                if (USER_FACING.test(apr.title) && !optedOut) missing.push({ pr: num, title: apr.title });
               }
             }
 
@@ -126,6 +135,7 @@ jobs:
             fs.writeFileSync(`${process.env.RUNNER_TEMP}/release_notes_input.json`, JSON.stringify(input, null, 2));
             core.setOutput('has_notes', String(notes.length > 0));
             core.setOutput('version', version);
+            core.setOutput('missing', missing.map((m) => `#${m.pr}`).join(' '));
 
             // Idempotent preview comment.
             const marker = '<!-- release-notes-preview -->';
@@ -136,6 +146,10 @@ jobs:
               }
             } else {
               lines.push('_No PRs in this release carry a Release Note._');
+            }
+            if (missing.length) {
+              lines.push('', `> [!WARNING]`, `> These user-facing PRs have no Release Note. Fill in their \`### Release Note (DE/EN)\` sections, or label a PR \`${NO_NOTE_LABEL}\` if users really cannot notice it, then re-run this check:`, '>');
+              for (const m of missing) lines.push(`> - #${m.pr} — ${m.title}`);
             }
             if (emptyPRs.length) {
               lines.push('', '<details><summary>PRs without a Release Note (confirm these are internal-only)</summary>', '');
@@ -192,3 +206,14 @@ jobs:
           fi
           git commit -m "docs: seed ${VERSION} user-facing release notes"
           git push origin "HEAD:${HEAD_REF}"
+
+      # Last, so the notes that do exist are still committed. Red rather than
+      # a line in the preview comment: 2.1.3 and 2.1.4 of clean_cycle shipped
+      # with no store notes because that line was the only signal.
+      - name: Require a note on every user-facing PR
+        if: steps.gather.outputs.missing != ''
+        env:
+          MISSING: ${{ steps.gather.outputs.missing }}
+        run: |
+          echo "::error::User-facing PRs without a Release Note: ${MISSING}. Fill in their Release Note sections or label them no-release-note, then re-run this check."
+          exit 1

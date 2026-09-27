@@ -34,6 +34,17 @@ on:
           durch Leerzeichen getrennt (z. B. Tests der tool/-Skripte).
         type: string
         default: ''
+      objectbox_c_version:
+        description: >-
+          Version der ObjectBox-C-Bibliothek (z. B. 5.3.2), die vor den Tests
+          geladen wird. Ohne sie überspringen ObjectBox-Tests sich auf Linux
+          selbst. Leer = kein Download. Nur zusammen mit objectbox_c_sha256.
+        type: string
+        default: ''
+      objectbox_c_sha256:
+        description: SHA-256 von objectbox-linux-x64.tar.gz der obigen Version.
+        type: string
+        default: ''
       has_screenshots:
         description: Screenshot-Generierung ausführen und in Stores hochladen
         type: boolean
@@ -108,6 +119,28 @@ jobs:
 
       - run: flutter pub get
       - run: flutter analyze --fatal-infos
+
+      - name: ObjectBox native library
+        if: inputs.objectbox_c_version != ''
+        env:
+          OBX_VERSION: ${{ inputs.objectbox_c_version }}
+          OBX_SHA256: ${{ inputs.objectbox_c_sha256 }}
+        # Tests that open a Store probe for libobjectbox.so and skip themselves
+        # when it is missing, which on a Linux runner is always. Pinned by
+        # checksum, since it is native code loaded into the test process.
+        run: |
+          set -euo pipefail
+          if [ -z "$OBX_SHA256" ]; then
+            echo "::error::objectbox_c_version ist gesetzt, objectbox_c_sha256 nicht"
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/objectbox"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/objectbox.tar.gz" \
+            "https://github.com/objectbox/objectbox-c/releases/download/v${OBX_VERSION}/objectbox-linux-x64.tar.gz"
+          echo "${OBX_SHA256}  $dir/objectbox.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/objectbox.tar.gz" -C "$dir"
+          echo "LD_LIBRARY_PATH=$dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Run tests with coverage
         env:

@@ -57,6 +57,8 @@ working_dir: frontend            # Pfad zum Flutter-Projekt
 coverage_threshold: 70           # Mindestzahl für Test-Coverage in %
 # coverage_exclude: '\.g\.dart$|\.freezed\.dart$'  # Default; Regex auf lcov-Pfade, die nicht zählen
 # extra_tests: 'tool/foo_test.dart'  # Tests außerhalb von test/, leerzeichengetrennt
+# objectbox_c_version: '5.3.2'       # ObjectBox-Tests laufen statt sich zu überspringen
+# objectbox_c_sha256: '<sha256 von objectbox-linux-x64.tar.gz>'
 ```
 
 In `.github/workflows/cd.yml`:

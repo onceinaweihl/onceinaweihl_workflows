@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.11.0...v1.11.1) (2026-09-27)
+
+
+### Bug Fixes
+
+* **ci:** use setup-core-auth from v1.11.0 in every reusable workflow ([#30](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/30)) ([56dca26](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/56dca2695861f4381fda2eb08bc8e506b4748c83))
+
 ## [1.11.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.10.0...v1.11.0) (2026-09-27)
 
 

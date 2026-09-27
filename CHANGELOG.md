@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.11.1...v1.12.0) (2026-09-27)
+
+
+### Features
+
+* **release-notes:** fail the release PR when a user-facing PR has no note ([22c4196](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/22c4196e1b51d0ccfa5d31934de7299e0bd66ee0))
+
+
+### Bug Fixes
+
+* **cd:** give Google Play a generic text when a release has no notes ([22c4196](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/22c4196e1b51d0ccfa5d31934de7299e0bd66ee0))
+
 ## [1.11.1](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.11.0...v1.11.1) (2026-09-27)
 
 

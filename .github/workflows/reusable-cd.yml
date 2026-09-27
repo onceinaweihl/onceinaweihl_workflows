@@ -112,7 +112,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -206,7 +206,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -267,7 +267,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -427,7 +427,7 @@ jobs:
           bundler-cache: true
           working-directory: ${{ inputs.working_dir }}/ios
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.9.2
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}

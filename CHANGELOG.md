@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.10.0...v1.11.0) (2026-09-27)
+
+
+### Features
+
+* **ci:** load the ObjectBox native library so its tests run ([#28](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/28)) ([5af9acf](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/5af9acf2139fe22c5e1d64b6b064a749b7c5385f))
+
 ## [1.10.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.9.2...v1.10.0) (2026-09-26)
 
 

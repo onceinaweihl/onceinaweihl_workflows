@@ -54,8 +54,13 @@ on:
         type: boolean
         default: false
       xcode_version:
+        description: >-
+          Xcode für den iOS-Build; muss auf dem macos-26-Image als
+          /Applications/Xcode_<version>.app liegen (Liste: actions/runner-images,
+          images/macos/macos-26-arm64-Readme.md). App Store Connect nimmt seit
+          28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an.
         type: string
-        default: '15.4'
+        default: '26.6'
       ruby_version:
         type: string
         default: '3.4.2'
@@ -412,7 +417,8 @@ jobs:
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_IOS_ENABLED != 'false' &&
       inputs.deploy_ios
-    runs-on: macos-15
+    # macos-26 carries every Xcode 26.x; macos-15 stops at 26.3.
+    runs-on: macos-26
     defaults:
       run:
         working-directory: ${{ inputs.working_dir }}
@@ -421,10 +427,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select Xcode ${{ inputs.xcode_version }}
+      # First, before the slow setup, and naming the versions the image does
+      # have; xcode-select alone only says "invalid developer directory".
+      - name: Xcode ${{ inputs.xcode_version }} prüfen und auswählen
         env:
           XCODE_VERSION: ${{ inputs.xcode_version }}
-        run: sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+        run: |
+          XCODE="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$XCODE" ]; then
+            installed=""
+            for app in /Applications/Xcode_*.app; do
+              [ -e "$app" ] || continue
+              v="${app#/Applications/Xcode_}"
+              installed="$installed ${v%.app}"
+            done
+            echo "::error title=Xcode ${XCODE_VERSION} fehlt::${XCODE} gibt es auf diesem Runner (${ImageOS:-?}, Image ${ImageVersion:-?}) nicht. Vorhanden:${installed:- keins}. xcode_version auf eine davon setzen — App Store Connect nimmt seit 28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an."
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:

@@ -417,6 +417,12 @@ jobs:
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_IOS_ENABLED != 'false' &&
       inputs.deploy_ios
+    # The build number is derived from App Store Connect, so two overlapping
+    # runs would pick the same one. queue: max keeps every waiting run.
+    concurrency:
+      group: cd-ios-${{ inputs.ios_bundle_id }}
+      cancel-in-progress: false
+      queue: max
     # macos-26 carries every Xcode 26.x; macos-15 stops at 26.3.
     runs-on: macos-26
     defaults:
@@ -475,6 +481,29 @@ jobs:
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
         run: bundle exec fastlane match appstore --readonly
 
+      # Latest build number in App Store Connect + 1, from the same lane
+      # scripts/deploy_ios.sh asks, so CI and local deploys count on one
+      # sequence. github.run_number collided with the timestamps local
+      # deploys uploaded.
+      - name: Nächste Build-Nummer aus App Store Connect ermitteln
+        id: build_number
+        working-directory: ${{ inputs.working_dir }}/ios
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          FILE=../build/next_build_number
+          rm -f "$FILE"
+          bundle exec fastlane next_build_number
+          NUMBER=$(cat "$FILE" 2>/dev/null || true)
+          if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Die Lane next_build_number muss die nächste Build-Nummer nach <working_dir>/build/next_build_number schreiben; gelesen: '${NUMBER}'"
+            exit 1
+          fi
+          echo "Nächste Build-Nummer: $NUMBER"
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
       # --build-name instead of rewriting pubspec.yaml with `sed -i`, which
       # BSD sed on macOS reads as a backup suffix and fails on tag builds.
       # VERSION_NAME is empty outside tag builds; the pubspec version applies.
@@ -482,11 +511,12 @@ jobs:
         env:
           WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
+          BUILD_NUMBER: ${{ steps.build_number.outputs.number }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
         run: |
           flutter build ipa --release \
             ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
-            --build-number="$GITHUB_RUN_NUMBER" \
+            --build-number="$BUILD_NUMBER" \
             --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
             --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
 

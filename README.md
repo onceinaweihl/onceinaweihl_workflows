@@ -24,6 +24,8 @@ template/
     release.yml
     release-notes.yml          # Release-Notes-Aggregation wrapper
     security-nightly.yml       # Daily security scan wrapper
+  frontend/ios/fastlane/
+    Fastfile                   # Lanes, die der iOS-Deploy aufruft
   release-please-config.json
   .release-please-manifest.json
 ```
@@ -42,6 +44,7 @@ Kopiere den gesamten Inhalt von `template/` in das Root des neuen App-Repos:
 .github/workflows/release.yml
 .github/workflows/release-notes.yml
 .github/workflows/security-nightly.yml
+frontend/ios/fastlane/Fastfile        # nur mit iOS-Deploy, siehe Schritt 6
 release-please-config.json
 .release-please-manifest.json
 ```
@@ -68,6 +71,7 @@ working_dir: frontend
 android_app_id: de.onceinaweihl.APPNAME   # Package Name aus build.gradle
 ios_bundle_id: de.onceinaweihl.APPNAME    # Bundle ID aus Xcode
 has_screenshots: true                      # false wenn keine Screenshot-Tests vorhanden
+# xcode_version: '26.6'                    # Default; muss auf macos-26 als /Applications/Xcode_<version>.app liegen
 ```
 
 In `.github/workflows/security-nightly.yml`:
@@ -140,6 +144,27 @@ Unter **Settings → Secrets and variables → Actions → Secrets**:
 Im App-Repo unter **Settings → Actions → General**:
 - "Allow all actions and reusable workflows" **oder**
 - "Allow actions created by GitHub, and select non-GitHub actions" + `onceinaweihl/onceinaweihl_workflows` explizit erlauben
+
+### 6. iOS: Fastlane-Lanes bereitstellen
+
+Der iOS-Job ruft keine Fastlane-Tools direkt auf, sondern Lanes aus `<working_dir>/ios/fastlane/Fastfile` — dieselben, die das lokale `scripts/deploy_ios.sh` nutzen soll, damit ein lokaler und ein CI-Deploy gleich signieren, nummerieren und hochladen. Vorlage: `template/frontend/ios/fastlane/Fastfile`.
+
+| Lane | Wann | Muss |
+|---|---|---|
+| `sync_certificates` | vor dem Build | Zertifikate und Profile per Match installieren (read-only); vorher `setup_ci`, sonst wartet `codesign` auf CI auf eine Keychain-Freigabe, bis der Job abbricht |
+| `next_build_number` | vor dem Build | letzte Build-Nummer aus App Store Connect + 1 als reine Zahl nach `<working_dir>/build/next_build_number` schreiben; der Job baut mit `--build-number` = dieser Zahl |
+| `beta` | Track ≠ `production` | `build/ios/ipa/*.ipa` zu TestFlight hochladen |
+| `release` | Track `production` | IPA hochladen und zur Review einreichen (`force: true`, `precheck_include_in_app_purchases: false` — Precheck kann In-App-Käufe mit API-Key nicht prüfen) |
+| `upload_screenshots` | `has_screenshots: true` | `ios/fastlane/screenshots/` hochladen, ohne Binary und Precheck |
+
+Die Lanes lesen den API-Key aus `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` und `APP_STORE_CONNECT_API_KEY_CONTENT` (der Job setzt sie aus `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY`); Fastlanes eigene Tools kennen diese Namen nicht, deshalb der Weg über `app_store_connect_api_key` in der Fastfile. Match liest `MATCH_PASSWORD` und `MATCH_GIT_BASIC_AUTHORIZATION`. Daneben braucht `ios/`:
+
+- `Gemfile` (+ `Gemfile.lock`) mit `gem "fastlane"`
+- `fastlane/Appfile` mit `app_identifier` und `team_id`
+- `fastlane/Matchfile` mit `git_url` und `type("appstore")`
+- Release-Signing im Xcode-Projekt: manuell, mit dem Match-Profil `match AppStore <bundle id>`
+
+Der Job läuft auf `macos-26`; `xcode_version` (Default `26.6`) muss dort als `/Applications/Xcode_<version>.app` liegen, sonst bricht er gleich zu Beginn mit der Liste der vorhandenen Versionen ab.
 
 ---
 

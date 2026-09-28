@@ -54,8 +54,13 @@ on:
         type: boolean
         default: false
       xcode_version:
+        description: >-
+          Xcode für den iOS-Build; muss auf dem macos-26-Image als
+          /Applications/Xcode_<version>.app liegen (Liste: actions/runner-images,
+          images/macos/macos-26-arm64-Readme.md). App Store Connect nimmt seit
+          28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an.
         type: string
-        default: '15.4'
+        default: '26.6'
       ruby_version:
         type: string
         default: '3.4.2'
@@ -352,11 +357,11 @@ jobs:
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
           VERSION_CODE: ${{ steps.version_code.outputs.code }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
+        # --build-name like the iOS build instead of rewriting pubspec.yaml.
+        # VERSION_NAME is empty outside tag builds; the pubspec version applies.
         run: |
-          if [ -n "$VERSION_NAME" ]; then
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${VERSION_CODE}/" pubspec.yaml
-          fi
           flutter build appbundle --release \
+            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
             --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/app/outputs/symbols \
@@ -403,6 +408,11 @@ jobs:
   # ─────────────────────────────────────────
   # 4. iOS Release Build + App Store
   # ─────────────────────────────────────────
+  # Signing, build number and uploads go through the app's own lanes in
+  # <working_dir>/ios/fastlane/Fastfile, the ones scripts/deploy_ios.sh uses
+  # as well (list: README → "Neue App einrichten"). Only the lanes read the
+  # API key from APP_STORE_CONNECT_API_KEY_*; fastlane's own tools ignore
+  # those names, so calling them directly ran unauthenticated.
   deploy-ios:
     name: iOS → App Store (${{ needs.resolve-context.outputs.track }})
     needs: [resolve-context, test-gate, generate-screenshots]
@@ -412,7 +422,14 @@ jobs:
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_IOS_ENABLED != 'false' &&
       inputs.deploy_ios
-    runs-on: macos-15
+    # The build number is derived from App Store Connect, so two overlapping
+    # runs would pick the same one. queue: max keeps every waiting run.
+    concurrency:
+      group: cd-ios-${{ inputs.ios_bundle_id }}
+      cancel-in-progress: false
+      queue: max
+    # macos-26 carries every Xcode 26.x; macos-15 stops at 26.3.
+    runs-on: macos-26
     defaults:
       run:
         working-directory: ${{ inputs.working_dir }}
@@ -421,10 +438,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select Xcode ${{ inputs.xcode_version }}
+      # First, before the slow setup, and naming the versions the image does
+      # have; xcode-select alone only says "invalid developer directory".
+      - name: Xcode ${{ inputs.xcode_version }} prüfen und auswählen
         env:
           XCODE_VERSION: ${{ inputs.xcode_version }}
-        run: sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+        run: |
+          XCODE="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "$XCODE" ]; then
+            installed=""
+            for app in /Applications/Xcode_*.app; do
+              [ -e "$app" ] || continue
+              v="${app#/Applications/Xcode_}"
+              installed="$installed ${v%.app}"
+            done
+            echo "::error title=Xcode ${XCODE_VERSION} fehlt::${XCODE} gibt es auf diesem Runner (${ImageOS:-?}, Image ${ImageVersion:-?}) nicht. Vorhanden:${installed:- keins}. xcode_version auf eine davon setzen — App Store Connect nimmt seit 28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an."
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
@@ -452,19 +484,44 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: bundle exec fastlane match appstore --readonly
+        run: bundle exec fastlane sync_certificates
 
+      # Latest build number in App Store Connect + 1, from the same lane
+      # scripts/deploy_ios.sh asks, so CI and local deploys count on one
+      # sequence. github.run_number collided with the timestamps local
+      # deploys uploaded.
+      - name: Nächste Build-Nummer aus App Store Connect ermitteln
+        id: build_number
+        working-directory: ${{ inputs.working_dir }}/ios
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          FILE=../build/next_build_number
+          rm -f "$FILE"
+          bundle exec fastlane next_build_number
+          NUMBER=$(cat "$FILE" 2>/dev/null || true)
+          if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::Die Lane next_build_number muss die nächste Build-Nummer nach <working_dir>/build/next_build_number schreiben; gelesen: '${NUMBER}'"
+            exit 1
+          fi
+          echo "Nächste Build-Nummer: $NUMBER"
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+      # --build-name instead of rewriting pubspec.yaml with `sed -i`, which
+      # BSD sed on macOS reads as a backup suffix and fails on tag builds.
+      # VERSION_NAME is empty outside tag builds; the pubspec version applies.
       - name: Build iOS IPA
         env:
           WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
+          BUILD_NUMBER: ${{ steps.build_number.outputs.number }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
         run: |
-          if [ -n "$VERSION_NAME" ]; then
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${GITHUB_RUN_NUMBER}/" pubspec.yaml
-          fi
           flutter build ipa --release \
-            --build-number="$GITHUB_RUN_NUMBER" \
+            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
+            --build-number="$BUILD_NUMBER" \
             --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
             --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
 
@@ -482,13 +539,10 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: |
-          bundle exec fastlane deliver \
-            --skip_binary_upload \
-            --screenshots_path screenshots/ \
-            --overwrite_screenshots \
-            --skip_metadata
+        run: bundle exec fastlane upload_screenshots
 
+      # production → release (upload and submit for review), every other
+      # track → beta (TestFlight). Both lanes take the IPA from build/ios/ipa/.
       - name: IPA zu App Store Connect hochladen
         working-directory: ${{ inputs.working_dir }}/ios
         env:
@@ -498,11 +552,7 @@ jobs:
           TRACK: ${{ needs.resolve-context.outputs.track }}
         run: |
           if [ "$TRACK" = "production" ]; then
-            bundle exec fastlane deliver \
-              --ipa ../build/ios/ipa/*.ipa \
-              --submit_for_review
+            bundle exec fastlane release
           else
-            bundle exec fastlane pilot upload \
-              --ipa ../build/ios/ipa/*.ipa \
-              --skip_waiting_for_build_processing true
+            bundle exec fastlane beta
           fi

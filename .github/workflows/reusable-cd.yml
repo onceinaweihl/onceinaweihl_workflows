@@ -352,11 +352,11 @@ jobs:
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
           VERSION_CODE: ${{ steps.version_code.outputs.code }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
+        # --build-name like the iOS build instead of rewriting pubspec.yaml.
+        # VERSION_NAME is empty outside tag builds; the pubspec version applies.
         run: |
-          if [ -n "$VERSION_NAME" ]; then
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${VERSION_CODE}/" pubspec.yaml
-          fi
           flutter build appbundle --release \
+            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
             --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/app/outputs/symbols \
@@ -454,16 +454,17 @@ jobs:
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
         run: bundle exec fastlane match appstore --readonly
 
+      # --build-name instead of rewriting pubspec.yaml with `sed -i`, which
+      # BSD sed on macOS reads as a backup suffix and fails on tag builds.
+      # VERSION_NAME is empty outside tag builds; the pubspec version applies.
       - name: Build iOS IPA
         env:
           WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
         run: |
-          if [ -n "$VERSION_NAME" ]; then
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${GITHUB_RUN_NUMBER}/" pubspec.yaml
-          fi
           flutter build ipa --release \
+            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
             --build-number="$GITHUB_RUN_NUMBER" \
             --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
             --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"

@@ -408,6 +408,11 @@ jobs:
   # ─────────────────────────────────────────
   # 4. iOS Release Build + App Store
   # ─────────────────────────────────────────
+  # Signing, build number and uploads go through the app's own lanes in
+  # <working_dir>/ios/fastlane/Fastfile, the ones scripts/deploy_ios.sh uses
+  # as well (list: README → "Neue App einrichten"). Only the lanes read the
+  # API key from APP_STORE_CONNECT_API_KEY_*; fastlane's own tools ignore
+  # those names, so calling them directly ran unauthenticated.
   deploy-ios:
     name: iOS → App Store (${{ needs.resolve-context.outputs.track }})
     needs: [resolve-context, test-gate, generate-screenshots]
@@ -479,7 +484,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: bundle exec fastlane match appstore --readonly
+        run: bundle exec fastlane sync_certificates
 
       # Latest build number in App Store Connect + 1, from the same lane
       # scripts/deploy_ios.sh asks, so CI and local deploys count on one
@@ -534,13 +539,10 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: |
-          bundle exec fastlane deliver \
-            --skip_binary_upload \
-            --screenshots_path screenshots/ \
-            --overwrite_screenshots \
-            --skip_metadata
+        run: bundle exec fastlane upload_screenshots
 
+      # production → release (upload and submit for review), every other
+      # track → beta (TestFlight). Both lanes take the IPA from build/ios/ipa/.
       - name: IPA zu App Store Connect hochladen
         working-directory: ${{ inputs.working_dir }}/ios
         env:
@@ -550,11 +552,7 @@ jobs:
           TRACK: ${{ needs.resolve-context.outputs.track }}
         run: |
           if [ "$TRACK" = "production" ]; then
-            bundle exec fastlane deliver \
-              --ipa ../build/ios/ipa/*.ipa \
-              --submit_for_review
+            bundle exec fastlane release
           else
-            bundle exec fastlane pilot upload \
-              --ipa ../build/ios/ipa/*.ipa \
-              --skip_waiting_for_build_processing true
+            bundle exec fastlane beta
           fi

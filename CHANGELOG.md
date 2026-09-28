@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.12.0...v2.0.0) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cd:** apps that deploy iOS must provide the Fastfile lanes sync_certificates, next_build_number, beta, release and, with has_screenshots, upload_screenshots (README → "Neue App einrichten").
+
+### Bug Fixes
+
+* **cd:** build iOS with Xcode 26.6 on macos-26, check for it first ([f43a612](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/f43a612e3175844166860612c15a0aa49a7f0c82))
+* **cd:** deploy iOS through the app's Fastfile lanes ([f43a612](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/f43a612e3175844166860612c15a0aa49a7f0c82))
+* **cd:** number iOS builds from App Store Connect ([f43a612](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/f43a612e3175844166860612c15a0aa49a7f0c82))
+* **cd:** pass --build-name instead of rewriting pubspec.yaml with sed ([f43a612](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/f43a612e3175844166860612c15a0aa49a7f0c82))
+
 ## [1.12.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.11.1...v1.12.0) (2026-09-27)
 
 

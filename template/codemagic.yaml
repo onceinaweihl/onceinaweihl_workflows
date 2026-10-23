@@ -1,0 +1,225 @@
+# Codemagic — iOS release builds
+#
+# Template for the app repo's root (Codemagic only reads codemagic.yaml there).
+# Replaces the macOS runner of onceinaweihl_workflows' reusable-cd.yml
+# (job `deploy-ios`), which costs ten times the GitHub minutes. Android stays
+# on GitHub Actions. Setup: README → "iOS über Codemagic".
+#
+# The steps are the ones scripts/deploy_ios.sh and the CD job run, through the
+# same Fastlane lanes, so a Codemagic, a CI and a local deploy sign, number and
+# upload alike.
+#
+# No trigger of its own: with codemagic_app_id set, reusable-cd.yml starts
+# this workflow through the Codemagic API once the test gate is green. A build
+# can also be started by hand in Codemagic, on a tag or a branch.
+#
+# The paths assume working_dir `frontend`; adjust them if the app lives
+# elsewhere.
+#
+# Variable groups to create in the Codemagic app settings (Environment
+# variables). The Fastlane names are used as they are, so nothing is mapped:
+#   app_store_connect  APP_STORE_CONNECT_API_KEY_ID
+#                      APP_STORE_CONNECT_API_KEY_ISSUER_ID
+#                      APP_STORE_CONNECT_API_KEY_CONTENT   (secret, .p8 content
+#                                                           incl. BEGIN/END lines)
+#   match              MATCH_PASSWORD                      (secret)
+#                      MATCH_GIT_BASIC_AUTHORIZATION       (secret, value of the
+#                                                           GitHub secret MATCH_GIT_TOKEN)
+#   core_access        CORE_ACCESS_APP_ID
+#                      CORE_ACCESS_APP_KEY                 (secret, PEM incl.
+#                                                           BEGIN/END lines)
+#   wiredash           WIREDASH_PROJECT_ID, WIREDASH_SECRET (secret)
+
+workflows:
+  ios-release:
+    name: iOS release
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      groups:
+        - app_store_connect
+        - match
+        - core_access
+        - wiredash
+      # Same as flutter_version in .github/workflows/ci.yml and cd.yml. Renovate's
+      # regex manager only reads .github/workflows/ so far; until the shared
+      # preset also covers codemagic.yaml, bump this together with those.
+      # renovate: datasource=github-releases depName=flutter/flutter
+      flutter: "3.47.3"                                # ← anpassen
+      # Same as xcode_version in reusable-cd.yml. App Store Connect has only
+      # accepted builds made with Xcode 26 and the iOS 26 SDK since 28.04.2026.
+      xcode: "26.6"
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
+    scripts:
+      # Track and version from the tag, as resolve-context in reusable-cd.yml
+      # does: vX.Y.Z → App Store review, vX.Y.Z-alpha/-beta → TestFlight. A
+      # build without a tag goes to TestFlight with the pubspec version.
+      # CM_TAG is only set for tag webhooks, so a tag build started by hand or
+      # through the API reads the tag from the checkout instead.
+      - name: Resolve track and version
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          TAG="${CM_TAG:-$(git describe --tags --exact-match 2>/dev/null || true)}"
+          if [[ "$TAG" == v* ]]; then
+            # grep -E, not -P: BSD grep on macOS has no Perl regexes.
+            VERSION_NAME=$(printf '%s' "${TAG#v}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+            if [ -z "$VERSION_NAME" ]; then
+              echo "Tag '$TAG' does not start with vX.Y.Z"
+              exit 1
+            fi
+            case "$TAG" in
+              *-alpha*|*-beta*) LANE=beta ;;
+              *) LANE=release ;;
+            esac
+          else
+            VERSION_NAME=""
+            LANE=beta
+          fi
+          echo "Tag: ${TAG:-none} → lane: $LANE, version: ${VERSION_NAME:-from pubspec.yaml}"
+          echo "LANE=$LANE" >> "$CM_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$CM_ENV"
+
+      # onceinaweihl_core is a private git dependency. Like setup-core-auth in
+      # onceinaweihl_workflows: a token from the core-access GitHub App, valid
+      # for an hour and limited to reading onceinaweihl_core, and an insteadOf
+      # rewrite for the clone. The rewrite only lives for `pub get`: left in
+      # place it would also apply to the Match repository, which the token
+      # cannot read. The token is never printed; a failing clone could show it
+      # in the log, where it expires within the hour.
+      - name: Fetch packages (with access to onceinaweihl_core)
+        working_directory: frontend
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          b64url() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
+
+          # Pasted values can carry a trailing newline or, copied from a .env
+          # file, a literal \n for each line break of the key.
+          app_id=$(printf '%s' "$CORE_ACCESS_APP_ID" | tr -d '[:space:]')
+          key=$(printf '%b' "$CORE_ACCESS_APP_KEY")
+          # The App ID goes in as a number; GitHub reads a string as a Client ID.
+          if [[ "$app_id" =~ ^[0-9]+$ ]]; then iss=$app_id; else iss="\"$app_id\""; fi
+
+          now=$(date +%s)
+          header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+          payload=$(printf '{"iat":%d,"exp":%d,"iss":%s}' \
+            $((now - 60)) $((now + 540)) "$iss" | b64url)
+          signature=$(printf '%s.%s' "$header" "$payload" \
+            | openssl dgst -sha256 -sign <(printf '%s\n' "$key") | b64url)
+          jwt="$header.$payload.$signature"
+
+          # On a failed call, GitHub's own message instead of curl's bare status.
+          # Error bodies never carry a token.
+          github() {
+            local response status
+            response=$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer $jwt" \
+              -H "Accept: application/vnd.github+json" "$@")
+            status=${response##*$'\n'}
+            response=${response%$'\n'*}
+            if [ "$status" -ge 300 ]; then
+              echo "GitHub answered $status: $(printf '%s' "$response" | jq -r '.message // .')" >&2
+              return 1
+            fi
+            printf '%s' "$response"
+          }
+
+          api=https://api.github.com
+          installation=$(github "$api/users/onceinaweihl/installation" | jq -r .id)
+          token=$(github -X POST \
+            -d '{"repositories":["onceinaweihl_core"],"permissions":{"contents":"read"}}' \
+            "$api/app/installations/$installation/access_tokens" | jq -r .token)
+          if [ -z "$token" ] || [ "$token" = null ]; then
+            echo "No installation token for onceinaweihl_core"
+            exit 1
+          fi
+
+          rewrite="url.https://x-access-token:${token}@github.com/onceinaweihl/.insteadOf"
+          trap 'git config --global --unset-all "$rewrite" || true' EXIT
+          git config --global "$rewrite" "https://github.com/onceinaweihl/"
+          flutter pub get
+
+      - name: Install Fastlane
+        working_directory: frontend/ios
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          # The Bundler that wrote Gemfile.lock, so `bundle install` does not
+          # rewrite it.
+          bundler_version=$(awk '/^BUNDLED WITH/ { getline; print $1 }' Gemfile.lock)
+          gem install bundler -v "$bundler_version" --no-document
+          bundle install
+
+      # setup_ci in the lane creates a temporary keychain, since Codemagic sets
+      # CI=true.
+      - name: Certificates (Match)
+        working_directory: frontend/ios
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          # Match sends this value as a Basic auth header when it clones the
+          # certificates repo. Base64 holds no blanks or quotes, so a value
+          # pasted with a trailing newline or with the quotes from .env.deploy
+          # is cleaned here; anything else that is not base64 of user:token
+          # makes GitHub answer 400, so say so before Match tries.
+          auth=$(printf '%s' "$MATCH_GIT_BASIC_AUTHORIZATION" | tr -d '[:space:]"'"'")
+          if ! printf '%s' "$auth" | openssl base64 -d -A 2>/dev/null | grep -q ':'; then
+            echo "MATCH_GIT_BASIC_AUTHORIZATION is not base64 of <user>:<token>."
+            echo "Create it with: printf '%s' '<user>:<token>' | base64"
+            exit 1
+          fi
+          export MATCH_GIT_BASIC_AUTHORIZATION=$auth
+
+          # A clone rewrite left behind by "Fetch packages" would add a second
+          # set of credentials to the request. Remove any, without printing
+          # them. No match makes git exit 1, which is the normal case.
+          leftovers=$(git config --global --name-only --get-regexp '^url\..*x-access-token' 2>/dev/null || true)
+          while read -r name; do
+            if [ -n "$name" ]; then git config --global --unset-all "$name"; fi
+          done <<< "$leftovers"
+
+          bundle exec fastlane sync_certificates
+
+      # The latest upload in App Store Connect + 1, the same sequence local
+      # deploys and the CD job count on. ASC_BUILD_NUMBER, not BUILD_NUMBER:
+      # Codemagic sets that one itself.
+      - name: Next build number
+        working_directory: frontend/ios
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          rm -f ../build/next_build_number
+          bundle exec fastlane next_build_number
+          number=$(cat ../build/next_build_number 2>/dev/null || true)
+          if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+            echo "next_build_number must write the next build number to frontend/build/next_build_number; read: '$number'"
+            exit 1
+          fi
+          echo "Next build number: $number"
+          echo "ASC_BUILD_NUMBER=$number" >> "$CM_ENV"
+
+      # --build-name instead of rewriting pubspec.yaml. VERSION_NAME is empty
+      # without a tag; then the pubspec version applies.
+      - name: Build IPA
+        working_directory: frontend
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          flutter build ipa --release \
+            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
+            --build-number="$ASC_BUILD_NUMBER" \
+            --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
+            --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
+
+      # release → upload and submit for review, beta → TestFlight. Both lanes
+      # take the IPA from frontend/build/ios/ipa/.
+      - name: Upload to App Store Connect
+        working_directory: frontend/ios
+        script: bundle exec fastlane "$LANE"
+
+    artifacts:
+      - frontend/build/ios/ipa/*.ipa

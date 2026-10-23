@@ -53,6 +53,18 @@ on:
         description: iOS nach App Store deployen (wird bei Tag-Releases immer gesetzt)
         type: boolean
         default: false
+      codemagic_app_id:
+        description: >-
+          App-ID der App in Codemagic. Gesetzt: deploy_ios baut und lädt iOS auf
+          Codemagic hoch (Workflow codemagic_workflow aus der codemagic.yaml des
+          App-Repos) statt auf einem macOS-Runner, der hier zehn Minuten pro
+          Minute kostet. Braucht das Secret CODEMAGIC_API_TOKEN. Leer = macOS-Runner.
+        type: string
+        default: ''
+      codemagic_workflow:
+        description: Workflow-ID in der codemagic.yaml des App-Repos.
+        type: string
+        default: ios-release
       xcode_version:
         description: >-
           Xcode für den iOS-Build; muss auf dem macos-26-Image als
@@ -421,7 +433,8 @@ jobs:
       needs.test-gate.result == 'success' &&
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_IOS_ENABLED != 'false' &&
-      inputs.deploy_ios
+      inputs.deploy_ios &&
+      inputs.codemagic_app_id == ''
     # The build number is derived from App Store Connect, so two overlapping
     # runs would pick the same one. queue: max keeps every waiting run.
     concurrency:
@@ -556,3 +569,102 @@ jobs:
           else
             bundle exec fastlane beta
           fi
+
+  # ─────────────────────────────────────────
+  # 4b. iOS über Codemagic (statt 4, wenn codemagic_app_id gesetzt ist)
+  # ─────────────────────────────────────────
+  # The same gate as deploy-ios, but the build runs on Codemagic's macOS
+  # machines: this Linux job starts the app's Codemagic workflow through the
+  # API and follows it, so a failed iOS release turns this run red. Signing,
+  # build number and upload happen in the app's codemagic.yaml, through the
+  # same Fastlane lanes deploy-ios uses (template: template/codemagic.yaml).
+  # A tag builds that tag, and the Codemagic workflow reads the track from it;
+  # a hand-started run builds its branch, which goes to TestFlight.
+  deploy-ios-codemagic:
+    name: iOS → App Store via Codemagic (${{ needs.resolve-context.outputs.track }})
+    needs: [resolve-context, test-gate, generate-screenshots]
+    if: |
+      always() &&
+      needs.test-gate.result == 'success' &&
+      (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
+      vars.DEPLOY_IOS_ENABLED != 'false' &&
+      inputs.deploy_ios &&
+      inputs.codemagic_app_id != ''
+    # Same group as deploy-ios: one iOS release per app at a time, since the
+    # build number comes from App Store Connect.
+    concurrency:
+      group: cd-ios-${{ inputs.ios_bundle_id }}
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    # Codemagic's own limit is max_build_duration in codemagic.yaml; this
+    # leaves room for its queue on top.
+    timeout-minutes: 90
+    steps:
+      - name: Codemagic-Build starten und verfolgen
+        env:
+          CODEMAGIC_API_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
+          APP_ID: ${{ inputs.codemagic_app_id }}
+          WORKFLOW_ID: ${{ inputs.codemagic_workflow }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          HAS_SCREENSHOTS: ${{ inputs.has_screenshots }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CODEMAGIC_API_TOKEN" ]; then
+            echo "::error::codemagic_app_id ist gesetzt, das Secret CODEMAGIC_API_TOKEN fehlt"
+            exit 1
+          fi
+          if [ "$HAS_SCREENSHOTS" = "true" ]; then
+            echo "::warning::Die generierten Screenshots erreichen Codemagic nicht; die release-Lane lädt ios/fastlane/screenshots/ so hoch, wie es im Repo liegt."
+          fi
+
+          api=https://api.codemagic.io
+          ref_key=branch
+          if [ "$REF_TYPE" = tag ]; then ref_key=tag; fi
+          body=$(jq -nc --arg app "$APP_ID" --arg wf "$WORKFLOW_ID" \
+            --arg key "$ref_key" --arg ref "$REF_NAME" \
+            '{appId: $app, workflowId: $wf} + {($key): $ref}')
+
+          response=$(curl -sS -w '\n%{http_code}' -X POST \
+            -H "Content-Type: application/json" -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
+            -d "$body" "$api/builds")
+          status=${response##*$'\n'}
+          response=${response%$'\n'*}
+          if [ "$status" -ge 300 ]; then
+            echo "::error::Codemagic hat den Build nicht gestartet ($status): $response"
+            exit 1
+          fi
+          build_id=$(jq -r .buildId <<<"$response")
+          url="https://codemagic.io/app/$APP_ID/build/$build_id"
+          echo "Codemagic-Build: $url"
+          {
+            echo "### iOS auf Codemagic"
+            echo "[Build $build_id]($url) für $REF_TYPE \`$REF_NAME\`, Workflow \`$WORKFLOW_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # finished is success; failed, canceled, timeout and skipped end the
+          # build otherwise. Anything else is still queued or running.
+          last=""
+          while :; do
+            sleep 30
+            if ! state=$(curl -fsS -H "x-auth-token: $CODEMAGIC_API_TOKEN" \
+                "$api/builds/$build_id" | jq -r .build.status); then
+              echo "Status nicht lesbar, neuer Versuch in 30 s"
+              continue
+            fi
+            if [ "$state" != "$last" ]; then
+              echo "$(date -u +%H:%M:%S) $state"
+              last=$state
+            fi
+            case "$state" in
+              finished)
+                echo "iOS gebaut und zu App Store Connect hochgeladen."
+                exit 0
+                ;;
+              failed|canceled|timeout|skipped)
+                echo "::error::Codemagic-Build endete mit '$state': $url"
+                exit 1
+                ;;
+            esac
+          done

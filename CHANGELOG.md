@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v2.0.0...v2.1.0) (2026-10-23)
+
+
+### Features
+
+* **cd:** build iOS releases on Codemagic when codemagic_app_id is set ([#36](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/36)) ([0b3839c](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/0b3839c53fb300987d5eb2d7cd45db8c7763c929))
+
 ## [2.0.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v1.12.0...v2.0.0) (2026-09-28)
 
 

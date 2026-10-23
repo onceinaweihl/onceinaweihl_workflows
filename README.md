@@ -26,6 +26,7 @@ template/
     security-nightly.yml       # Daily security scan wrapper
   frontend/ios/fastlane/
     Fastfile                   # Lanes, die der iOS-Deploy aufruft
+  codemagic.yaml               # iOS-Release auf Codemagic (optional, Schritt 7)
   release-please-config.json
   .release-please-manifest.json
 ```
@@ -45,6 +46,7 @@ Kopiere den gesamten Inhalt von `template/` in das Root des neuen App-Repos:
 .github/workflows/release-notes.yml
 .github/workflows/security-nightly.yml
 frontend/ios/fastlane/Fastfile        # nur mit iOS-Deploy, siehe Schritt 6
+codemagic.yaml                        # nur mit iOS über Codemagic, siehe Schritt 7
 release-please-config.json
 .release-please-manifest.json
 ```
@@ -72,6 +74,7 @@ android_app_id: de.onceinaweihl.APPNAME   # Package Name aus build.gradle
 ios_bundle_id: de.onceinaweihl.APPNAME    # Bundle ID aus Xcode
 has_screenshots: true                      # false wenn keine Screenshot-Tests vorhanden
 # xcode_version: '26.6'                    # Default; muss auf macos-26 als /Applications/Xcode_<version>.app liegen
+# codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}  # iOS auf Codemagic statt macOS-Runner, siehe Schritt 7
 ```
 
 In `.github/workflows/security-nightly.yml`:
@@ -165,6 +168,23 @@ Die Lanes lesen den API-Key aus `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNE
 - Release-Signing im Xcode-Projekt: manuell, mit dem Match-Profil `match AppStore <bundle id>`
 
 Der Job läuft auf `macos-26`; `xcode_version` (Default `26.6`) muss dort als `/Applications/Xcode_<version>.app` liegen, sonst bricht er gleich zu Beginn mit der Liste der vorhandenen Versionen ab.
+
+### 7. iOS über Codemagic (optional)
+
+Ein macOS-Runner verbraucht bei privaten Repos zehn Minuten Kontingent pro Minute. Mit `codemagic_app_id` baut `reusable-cd.yml` iOS stattdessen auf Codemagic (Free-Plan für persönliche Accounts: 500 M2-Minuten im Monat). Der Job `deploy-ios-codemagic` läuft auf Linux nach dem Test-Gate, startet den Codemagic-Workflow per API und wartet auf das Ergebnis. Ein fehlgeschlagener iOS-Build macht den CD-Lauf rot. Die Fastlane-Lanes aus Schritt 6 bleiben dieselben.
+
+1. `template/codemagic.yaml` ins Root des App-Repos kopieren, Flutter-Version und Pfade anpassen.
+2. In Codemagic die App anlegen (GitHub-App-Integration auf dem Account, dem das Repo gehört) und die Variablengruppen aus dem Kopf der `codemagic.yaml` anlegen. Werte ohne Anführungszeichen, Schlüssel (`.p8`, PEM) mit echten Zeilenumbrüchen.
+3. Im App-Repo unter **Settings → Secrets and variables → Actions**:
+
+   | | Name | Wert |
+   |---|---|---|
+   | Secret | `CODEMAGIC_API_TOKEN` | Codemagic → Account settings → API token |
+   | Variable | `CODEMAGIC_APP_ID` | ID aus der Codemagic-URL der App (`codemagic.io/app/<id>/…`) |
+
+4. In `cd.yml` `codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}` setzen. `deploy_ios` bleibt der Schalter, ob iOS ausgeliefert wird. `codemagic_app_id` entscheidet nur, wo.
+
+Ein Tag baut genau diesen Tag, und die `codemagic.yaml` liest den Track daraus: `vX.Y.Z` geht zur Review, `-alpha` und `-beta` nach TestFlight. Ein Hand-Start mit `deploy_ios` baut den Branch und geht nach TestFlight. Generierte Screenshots (`has_screenshots`) erreichen Codemagic nicht. Die `release`-Lane lädt `ios/fastlane/screenshots/` so hoch, wie es im Repo liegt.
 
 ---
 
@@ -276,4 +296,4 @@ with:
   run_ios_build: true
 ```
 
-iOS Release Builds laufen ausschließlich im CD-Workflow auf Tag-Pushes.
+iOS Release Builds laufen ausschließlich im CD-Workflow auf Tag-Pushes, auf `macos-26` oder mit `codemagic_app_id` auf Codemagic (Schritt 7).

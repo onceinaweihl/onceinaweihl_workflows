@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v2.1.0...v3.0.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cd:** reusable-cd.yml no longer builds iOS on a GitHub macOS runner and no longer accepts xcode_version; reusable-ci.yml no longer accepts xcode_version. Callers with deploy_ios need codemagic_app_id and a codemagic.yaml (template/codemagic.yaml), or set DEPLOY_IOS_ENABLED=false.
+
+### Features
+
+* **cd:** build iOS only on Codemagic ([#38](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/38)) ([39c23f4](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/39c23f4d31ecd47c9b92322ba9b46876530518d9))
+* **template:** skip CI on docs-only changes ([#40](https://github.com/onceinaweihl/onceinaweihl_workflows/issues/40)) ([76e08f5](https://github.com/onceinaweihl/onceinaweihl_workflows/commit/76e08f535db6bbc4ac1b8f3bc91f9ada0fd8c71b))
+
 ## [2.1.0](https://github.com/onceinaweihl/onceinaweihl_workflows/compare/v2.0.0...v2.1.0) (2026-10-23)
 
 

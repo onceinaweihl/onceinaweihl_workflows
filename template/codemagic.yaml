@@ -1,12 +1,12 @@
 # Codemagic — iOS release builds
 #
 # Template for the app repo's root (Codemagic only reads codemagic.yaml there).
-# Replaces the macOS runner of onceinaweihl_workflows' reusable-cd.yml
-# (job `deploy-ios`), which costs ten times the GitHub minutes. Android stays
+# iOS builds only here: onceinaweihl_workflows' reusable-cd.yml has no macOS
+# runner, which costs ten times the GitHub minutes. Android stays
 # on GitHub Actions. Setup: README → "iOS über Codemagic".
 #
-# The steps are the ones scripts/deploy_ios.sh and the CD job run, through the
-# same Fastlane lanes, so a Codemagic, a CI and a local deploy sign, number and
+# The steps are the ones scripts/deploy_ios.sh runs, through the
+# same Fastlane lanes, so a Codemagic and a local deploy sign, number and
 # upload alike.
 #
 # No trigger of its own: with codemagic_app_id set, reusable-cd.yml starts
@@ -23,8 +23,8 @@
 #                      APP_STORE_CONNECT_API_KEY_CONTENT   (secret, .p8 content
 #                                                           incl. BEGIN/END lines)
 #   match              MATCH_PASSWORD                      (secret)
-#                      MATCH_GIT_BASIC_AUTHORIZATION       (secret, value of the
-#                                                           GitHub secret MATCH_GIT_TOKEN)
+#                      MATCH_GIT_BASIC_AUTHORIZATION       (secret, Basic-Auth
+#                                                           token for the Match repo)
 #   core_access        CORE_ACCESS_APP_ID
 #                      CORE_ACCESS_APP_KEY                 (secret, PEM incl.
 #                                                           BEGIN/END lines)
@@ -46,7 +46,7 @@ workflows:
       # preset also covers codemagic.yaml, bump this together with those.
       # renovate: datasource=github-releases depName=flutter/flutter
       flutter: "3.47.3"                                # ← anpassen
-      # Same as xcode_version in reusable-cd.yml. App Store Connect has only
+      # App Store Connect has only
       # accepted builds made with Xcode 26 and the iOS 26 SDK since 28.04.2026.
       xcode: "26.6"
       cocoapods: default
@@ -185,7 +185,7 @@ workflows:
           bundle exec fastlane sync_certificates
 
       # The latest upload in App Store Connect + 1, the same sequence local
-      # deploys and the CD job count on. ASC_BUILD_NUMBER, not BUILD_NUMBER:
+      # deploys count on. ASC_BUILD_NUMBER, not BUILD_NUMBER:
       # Codemagic sets that one itself.
       - name: Next build number
         working_directory: frontend/ios

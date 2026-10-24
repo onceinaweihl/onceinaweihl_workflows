@@ -27,6 +27,6 @@ jobs:
       coverage_threshold: 70                         # ← anpassen
       has_screenshots: true                          # ← auf false wenn keine Screenshot-Tests
       deploy_ios: ${{ inputs.deploy_ios || github.ref_type == 'tag' }}
-      # iOS auf Codemagic statt auf dem macOS-Runner (README → "iOS über Codemagic"):
+      # Pflicht für iOS ab v3.0.0 (README → "iOS über Codemagic"); erst mit dem Pin-Bump einkommentieren:
       # codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}
     secrets: inherit

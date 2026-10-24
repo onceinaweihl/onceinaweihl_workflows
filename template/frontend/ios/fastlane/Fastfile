@@ -8,7 +8,7 @@
 #   next_build_number   write the next free build number to build/next_build_number
 #   beta                upload build/ios/ipa/*.ipa to TestFlight
 #   release             upload it and submit it for App Store review
-#   upload_screenshots  upload fastlane/screenshots/ (CD only with has_screenshots)
+#   upload_screenshots  upload fastlane/screenshots/ (manual; release uploads them too)
 #
 # Next to it: ios/Gemfile with gem "fastlane", fastlane/Appfile
 # (app_identifier, team_id) and fastlane/Matchfile (git_url, type "appstore").

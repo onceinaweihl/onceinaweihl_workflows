@@ -1,10 +1,15 @@
 name: CI — Pull Request Checks
 
+# Docs-only changes skip CI. If a ruleset ever requires these checks, a
+# skipped workflow reports no status and the PR waits forever; then the
+# filter has to move into the reusable workflow.
 on:
   pull_request:
     branches: [main, develop]
+    paths-ignore: [docs/**, frontend/docs/**, "**/*.md"]
   push:
     branches: [develop]
+    paths-ignore: [docs/**, frontend/docs/**, "**/*.md"]
 
 # The Security Scan job uploads SARIF; a reusable workflow cannot ask for
 # more than its caller grants.

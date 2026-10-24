@@ -26,7 +26,7 @@ template/
     security-nightly.yml       # Daily security scan wrapper
   frontend/ios/fastlane/
     Fastfile                   # Lanes, die der iOS-Deploy aufruft
-  codemagic.yaml               # iOS-Release auf Codemagic (optional, Schritt 7)
+  codemagic.yaml               # iOS-Release auf Codemagic (Schritt 7)
   release-please-config.json
   .release-please-manifest.json
 ```
@@ -73,8 +73,7 @@ working_dir: frontend
 android_app_id: de.onceinaweihl.APPNAME   # Package Name aus build.gradle
 ios_bundle_id: de.onceinaweihl.APPNAME    # Bundle ID aus Xcode
 has_screenshots: true                      # false wenn keine Screenshot-Tests vorhanden
-# xcode_version: '26.6'                    # Default; muss auf macos-26 als /Applications/Xcode_<version>.app liegen
-# codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}  # iOS auf Codemagic statt macOS-Runner, siehe Schritt 7
+codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}  # Pflicht für iOS, siehe Schritt 7
 ```
 
 In `.github/workflows/security-nightly.yml`:
@@ -129,11 +128,9 @@ Unter **Settings → Secrets and variables → Actions → Secrets**:
 
 | Secret | Beschreibung |
 |---|---|
-| `MATCH_PASSWORD` | Passwort für Fastlane Match Repo |
-| `MATCH_GIT_TOKEN` | Token für Fastlane Match Git-Repo (Basic Auth Base64) |
-| `ASC_KEY_ID` | App Store Connect API Key ID |
-| `ASC_ISSUER_ID` | App Store Connect Issuer ID |
-| `ASC_PRIVATE_KEY` | App Store Connect API Private Key (.p8 Inhalt) |
+| `CODEMAGIC_API_TOKEN` | Codemagic → Account settings → API token (Schritt 7) |
+
+Match- und App-Store-Connect-Schlüssel liegen nicht in GitHub, sondern in den Codemagic-Variablengruppen (Kopf der `codemagic.yaml`).
 
 **Wiredash**
 
@@ -150,28 +147,27 @@ Im App-Repo unter **Settings → Actions → General**:
 
 ### 6. iOS: Fastlane-Lanes bereitstellen
 
-Der iOS-Job ruft keine Fastlane-Tools direkt auf, sondern Lanes aus `<working_dir>/ios/fastlane/Fastfile` — dieselben, die das lokale `scripts/deploy_ios.sh` nutzen soll, damit ein lokaler und ein CI-Deploy gleich signieren, nummerieren und hochladen. Vorlage: `template/frontend/ios/fastlane/Fastfile`.
+Der Codemagic-Workflow ruft keine Fastlane-Tools direkt auf, sondern Lanes aus `<working_dir>/ios/fastlane/Fastfile` — dieselben, die das lokale `scripts/deploy_ios.sh` nutzen soll, damit ein lokaler und ein Codemagic-Deploy gleich signieren, nummerieren und hochladen. Vorlage: `template/frontend/ios/fastlane/Fastfile`.
 
 | Lane | Wann | Muss |
 |---|---|---|
 | `sync_certificates` | vor dem Build | Zertifikate und Profile per Match installieren (read-only); vorher `setup_ci`, sonst wartet `codesign` auf CI auf eine Keychain-Freigabe, bis der Job abbricht |
-| `next_build_number` | vor dem Build | letzte Build-Nummer aus App Store Connect + 1 als reine Zahl nach `<working_dir>/build/next_build_number` schreiben; der Job baut mit `--build-number` = dieser Zahl |
+| `next_build_number` | vor dem Build | letzte Build-Nummer aus App Store Connect + 1 als reine Zahl nach `<working_dir>/build/next_build_number` schreiben; die `codemagic.yaml` baut mit `--build-number` = dieser Zahl |
 | `beta` | Track ≠ `production` | `build/ios/ipa/*.ipa` zu TestFlight hochladen |
 | `release` | Track `production` | IPA hochladen und zur Review einreichen (`force: true`, `precheck_include_in_app_purchases: false` — Precheck kann In-App-Käufe mit API-Key nicht prüfen) |
-| `upload_screenshots` | `has_screenshots: true` | `ios/fastlane/screenshots/` hochladen, ohne Binary und Precheck |
 
-Die Lanes lesen den API-Key aus `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` und `APP_STORE_CONNECT_API_KEY_CONTENT` (der Job setzt sie aus `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY`); Fastlanes eigene Tools kennen diese Namen nicht, deshalb der Weg über `app_store_connect_api_key` in der Fastfile. Match liest `MATCH_PASSWORD` und `MATCH_GIT_BASIC_AUTHORIZATION`. Daneben braucht `ios/`:
+Die Lanes lesen den API-Key aus `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` und `APP_STORE_CONNECT_API_KEY_CONTENT` (Codemagic-Variablengruppe `app_store_connect`); Fastlanes eigene Tools kennen diese Namen nicht, deshalb der Weg über `app_store_connect_api_key` in der Fastfile. Match liest `MATCH_PASSWORD` und `MATCH_GIT_BASIC_AUTHORIZATION`. Daneben braucht `ios/`:
 
 - `Gemfile` (+ `Gemfile.lock`) mit `gem "fastlane"`
 - `fastlane/Appfile` mit `app_identifier` und `team_id`
 - `fastlane/Matchfile` mit `git_url` und `type("appstore")`
 - Release-Signing im Xcode-Projekt: manuell, mit dem Match-Profil `match AppStore <bundle id>`
 
-Der Job läuft auf `macos-26`; `xcode_version` (Default `26.6`) muss dort als `/Applications/Xcode_<version>.app` liegen, sonst bricht er gleich zu Beginn mit der Liste der vorhandenen Versionen ab.
+Die Xcode-Version steht in der `codemagic.yaml` (`environment.xcode`).
 
-### 7. iOS über Codemagic (optional)
+### 7. iOS über Codemagic
 
-Ein macOS-Runner verbraucht bei privaten Repos zehn Minuten Kontingent pro Minute. Mit `codemagic_app_id` baut `reusable-cd.yml` iOS stattdessen auf Codemagic (Free-Plan für persönliche Accounts: 500 M2-Minuten im Monat). Der Job `deploy-ios-codemagic` läuft auf Linux nach dem Test-Gate, startet den Codemagic-Workflow per API und wartet auf das Ergebnis. Ein fehlgeschlagener iOS-Build macht den CD-Lauf rot. Die Fastlane-Lanes aus Schritt 6 bleiben dieselben.
+iOS baut ausschließlich auf Codemagic; ein macOS-Runner verbraucht bei privaten Repos zehn Minuten Kontingent pro Minute (Codemagic Free-Plan für persönliche Accounts: 500 M2-Minuten im Monat). Der Job `deploy-ios-codemagic` läuft auf Linux nach dem Test-Gate, startet den Codemagic-Workflow per API und wartet auf das Ergebnis. Ein fehlgeschlagener iOS-Build macht den CD-Lauf rot. Fehlt `codemagic_app_id`, bricht der Job mit einer Fehlermeldung ab, statt still zu überspringen; eine App ohne iOS setzt `DEPLOY_IOS_ENABLED=false`.
 
 1. `template/codemagic.yaml` ins Root des App-Repos kopieren, Flutter-Version und Pfade anpassen.
 2. In Codemagic die App anlegen (GitHub-App-Integration auf dem Account, dem das Repo gehört) und die Variablengruppen aus dem Kopf der `codemagic.yaml` anlegen. Werte ohne Anführungszeichen, Schlüssel (`.p8`, PEM) mit echten Zeilenumbrüchen.
@@ -182,7 +178,7 @@ Ein macOS-Runner verbraucht bei privaten Repos zehn Minuten Kontingent pro Minut
    | Secret | `CODEMAGIC_API_TOKEN` | Codemagic → Account settings → API token |
    | Variable | `CODEMAGIC_APP_ID` | ID aus der Codemagic-URL der App (`codemagic.io/app/<id>/…`) |
 
-4. In `cd.yml` `codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}` setzen. `deploy_ios` bleibt der Schalter, ob iOS ausgeliefert wird. `codemagic_app_id` entscheidet nur, wo.
+4. In `cd.yml` `codemagic_app_id: ${{ vars.CODEMAGIC_APP_ID }}` setzen. `deploy_ios` bleibt der Schalter, ob iOS ausgeliefert wird. Die Variable enthält nur die ID, nicht die URL.
 
 Ein Tag baut genau diesen Tag, und die `codemagic.yaml` liest den Track daraus: `vX.Y.Z` geht zur Review, `-alpha` und `-beta` nach TestFlight. Ein Hand-Start mit `deploy_ios` baut den Branch und geht nach TestFlight. Generierte Screenshots (`has_screenshots`) erreichen Codemagic nicht. Die `release`-Lane lädt `ios/fastlane/screenshots/` so hoch, wie es im Repo liegt.
 
@@ -286,14 +282,6 @@ Eigene Referenzen (`setup-core-auth`, die Reusable Workflows in `template/`) sin
 
 ---
 
-## iOS Build in CI deaktivieren
+## iOS in CI
 
-Der iOS Debug Build in CI ist standardmäßig **deaktiviert** (`run_ios_build: false`), da macOS Runner 10× teurer sind als Linux. Nur aktivieren wenn wirklich nötig:
-
-```yaml
-# .github/workflows/ci.yml
-with:
-  run_ios_build: true
-```
-
-iOS Release Builds laufen ausschließlich im CD-Workflow auf Tag-Pushes, auf `macos-26` oder mit `codemagic_app_id` auf Codemagic (Schritt 7).
+`reusable-ci.yml` baut kein iOS mehr; `run_ios_build` ist ohne Wirkung und bleibt nur, damit bestehende Caller nicht an einem unbekannten Input scheitern. Er fällt mit dem nächsten Major weg. iOS baut ausschließlich auf Codemagic: Releases über `reusable-cd.yml` (Schritt 7), ein Probebuild per Hand-Start in Codemagic auf dem Branch.

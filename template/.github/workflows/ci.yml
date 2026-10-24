@@ -26,5 +26,4 @@ jobs:
       working_dir: frontend             # ← anpassen falls abweichend
       coverage_threshold: 70            # ← anpassen
       core_access_app_id: ${{ vars.CORE_ACCESS_APP_ID }}
-      run_ios_build: false
     secrets: inherit

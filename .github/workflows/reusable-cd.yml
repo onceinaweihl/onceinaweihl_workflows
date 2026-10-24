@@ -55,24 +55,15 @@ on:
         default: false
       codemagic_app_id:
         description: >-
-          App-ID der App in Codemagic. Gesetzt: deploy_ios baut und lädt iOS auf
-          Codemagic hoch (Workflow codemagic_workflow aus der codemagic.yaml des
-          App-Repos) statt auf einem macOS-Runner, der hier zehn Minuten pro
-          Minute kostet. Braucht das Secret CODEMAGIC_API_TOKEN. Leer = macOS-Runner.
+          App-ID der App in Codemagic. Pflicht für deploy_ios: iOS baut und lädt
+          nur über Codemagic hoch (Workflow codemagic_workflow aus der
+          codemagic.yaml des App-Repos). Braucht das Secret CODEMAGIC_API_TOKEN.
         type: string
         default: ''
       codemagic_workflow:
         description: Workflow-ID in der codemagic.yaml des App-Repos.
         type: string
         default: ios-release
-      xcode_version:
-        description: >-
-          Xcode für den iOS-Build; muss auf dem macos-26-Image als
-          /Applications/Xcode_<version>.app liegen (Liste: actions/runner-images,
-          images/macos/macos-26-arm64-Readme.md). App Store Connect nimmt seit
-          28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an.
-        type: string
-        default: '26.6'
       ruby_version:
         type: string
         default: '3.4.2'
@@ -369,7 +360,7 @@ jobs:
           WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
           VERSION_CODE: ${{ steps.version_code.outputs.code }}
           VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
-        # --build-name like the iOS build instead of rewriting pubspec.yaml.
+        # --build-name instead of rewriting pubspec.yaml.
         # VERSION_NAME is empty outside tag builds; the pubspec version applies.
         run: |
           flutter build appbundle --release \
@@ -418,166 +409,13 @@ jobs:
           whatsNewDirectory: ${{ inputs.working_dir }}/whatsnew/
 
   # ─────────────────────────────────────────
-  # 4. iOS Release Build + App Store
+  # 4. iOS über Codemagic
   # ─────────────────────────────────────────
-  # Signing, build number and uploads go through the app's own lanes in
-  # <working_dir>/ios/fastlane/Fastfile, the ones scripts/deploy_ios.sh uses
-  # as well (list: README → "Neue App einrichten"). Only the lanes read the
-  # API key from APP_STORE_CONNECT_API_KEY_*; fastlane's own tools ignore
-  # those names, so calling them directly ran unauthenticated.
-  deploy-ios:
-    name: iOS → App Store (${{ needs.resolve-context.outputs.track }})
-    needs: [resolve-context, test-gate, generate-screenshots]
-    if: |
-      always() &&
-      needs.test-gate.result == 'success' &&
-      (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
-      vars.DEPLOY_IOS_ENABLED != 'false' &&
-      inputs.deploy_ios &&
-      inputs.codemagic_app_id == ''
-    # The build number is derived from App Store Connect, so two overlapping
-    # runs would pick the same one. queue: max keeps every waiting run.
-    concurrency:
-      group: cd-ios-${{ inputs.ios_bundle_id }}
-      cancel-in-progress: false
-      queue: max
-    # macos-26 carries every Xcode 26.x; macos-15 stops at 26.3.
-    runs-on: macos-26
-    defaults:
-      run:
-        working-directory: ${{ inputs.working_dir }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-
-      # First, before the slow setup, and naming the versions the image does
-      # have; xcode-select alone only says "invalid developer directory".
-      - name: Xcode ${{ inputs.xcode_version }} prüfen und auswählen
-        env:
-          XCODE_VERSION: ${{ inputs.xcode_version }}
-        run: |
-          XCODE="/Applications/Xcode_${XCODE_VERSION}.app"
-          if [ ! -d "$XCODE" ]; then
-            installed=""
-            for app in /Applications/Xcode_*.app; do
-              [ -e "$app" ] || continue
-              v="${app#/Applications/Xcode_}"
-              installed="$installed ${v%.app}"
-            done
-            echo "::error title=Xcode ${XCODE_VERSION} fehlt::${XCODE} gibt es auf diesem Runner (${ImageOS:-?}, Image ${ImageVersion:-?}) nicht. Vorhanden:${installed:- keins}. xcode_version auf eine davon setzen — App Store Connect nimmt seit 28.04.2026 nur Builds mit Xcode 26 und iOS-26-SDK an."
-            exit 1
-          fi
-          sudo xcode-select -s "$XCODE"
-          xcodebuild -version
-
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          flutter-version: ${{ inputs.flutter_version }}
-          cache: true
-
-      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
-        with:
-          ruby-version: ${{ inputs.ruby_version }}
-          bundler-cache: true
-          working-directory: ${{ inputs.working_dir }}/ios
-
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
-        with:
-          app-id: ${{ inputs.core_access_app_id }}
-          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
-
-      - run: flutter pub get
-
-      - name: Zertifikate via Fastlane Match
-        working-directory: ${{ inputs.working_dir }}/ios
-        env:
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: bundle exec fastlane sync_certificates
-
-      # Latest build number in App Store Connect + 1, from the same lane
-      # scripts/deploy_ios.sh asks, so CI and local deploys count on one
-      # sequence. github.run_number collided with the timestamps local
-      # deploys uploaded.
-      - name: Nächste Build-Nummer aus App Store Connect ermitteln
-        id: build_number
-        working-directory: ${{ inputs.working_dir }}/ios
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: |
-          FILE=../build/next_build_number
-          rm -f "$FILE"
-          bundle exec fastlane next_build_number
-          NUMBER=$(cat "$FILE" 2>/dev/null || true)
-          if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "::error::Die Lane next_build_number muss die nächste Build-Nummer nach <working_dir>/build/next_build_number schreiben; gelesen: '${NUMBER}'"
-            exit 1
-          fi
-          echo "Nächste Build-Nummer: $NUMBER"
-          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
-
-      # --build-name instead of rewriting pubspec.yaml with `sed -i`, which
-      # BSD sed on macOS reads as a backup suffix and fails on tag builds.
-      # VERSION_NAME is empty outside tag builds; the pubspec version applies.
-      - name: Build iOS IPA
-        env:
-          WIREDASH_PROJECT_ID: ${{ secrets.WIREDASH_PROJECT_ID }}
-          WIREDASH_SECRET: ${{ secrets.WIREDASH_SECRET }}
-          BUILD_NUMBER: ${{ steps.build_number.outputs.number }}
-          VERSION_NAME: ${{ needs.resolve-context.outputs.version_name }}
-        run: |
-          flutter build ipa --release \
-            ${VERSION_NAME:+"--build-name=$VERSION_NAME"} \
-            --build-number="$BUILD_NUMBER" \
-            --dart-define=WIREDASH_PROJECT_ID="$WIREDASH_PROJECT_ID" \
-            --dart-define=WIREDASH_SECRET="$WIREDASH_SECRET"
-
-      - name: Download iOS screenshots
-        if: inputs.has_screenshots
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: ios-screenshots
-          path: ${{ inputs.working_dir }}/ios/fastlane/screenshots/
-
-      - name: Screenshots hochladen
-        if: inputs.has_screenshots
-        working-directory: ${{ inputs.working_dir }}/ios
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-        run: bundle exec fastlane upload_screenshots
-
-      # production → release (upload and submit for review), every other
-      # track → beta (TestFlight). Both lanes take the IPA from build/ios/ipa/.
-      - name: IPA zu App Store Connect hochladen
-        working-directory: ${{ inputs.working_dir }}/ios
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.ASC_PRIVATE_KEY }}
-          TRACK: ${{ needs.resolve-context.outputs.track }}
-        run: |
-          if [ "$TRACK" = "production" ]; then
-            bundle exec fastlane release
-          else
-            bundle exec fastlane beta
-          fi
-
-  # ─────────────────────────────────────────
-  # 4b. iOS über Codemagic (statt 4, wenn codemagic_app_id gesetzt ist)
-  # ─────────────────────────────────────────
-  # The same gate as deploy-ios, but the build runs on Codemagic's macOS
-  # machines: this Linux job starts the app's Codemagic workflow through the
-  # API and follows it, so a failed iOS release turns this run red. Signing,
-  # build number and upload happen in the app's codemagic.yaml, through the
-  # same Fastlane lanes deploy-ios uses (template: template/codemagic.yaml).
+  # iOS builds only on Codemagic's macOS machines; a macOS runner here costs
+  # ten times the minutes. This Linux job starts the app's Codemagic workflow
+  # through the API and follows it, so a failed iOS release turns this run
+  # red. Signing, build number and upload happen in the app's codemagic.yaml,
+  # through the app's Fastlane lanes (template: template/codemagic.yaml).
   # A tag builds that tag, and the Codemagic workflow reads the track from it;
   # a hand-started run builds its branch, which goes to TestFlight.
   deploy-ios-codemagic:
@@ -588,10 +426,9 @@ jobs:
       needs.test-gate.result == 'success' &&
       (needs.generate-screenshots.result == 'success' || needs.generate-screenshots.result == 'skipped') &&
       vars.DEPLOY_IOS_ENABLED != 'false' &&
-      inputs.deploy_ios &&
-      inputs.codemagic_app_id != ''
-    # Same group as deploy-ios: one iOS release per app at a time, since the
-    # build number comes from App Store Connect.
+      inputs.deploy_ios
+    # One iOS release per app at a time, since the build number comes from
+    # App Store Connect.
     concurrency:
       group: cd-ios-${{ inputs.ios_bundle_id }}
       cancel-in-progress: false
@@ -611,6 +448,12 @@ jobs:
           HAS_SCREENSHOTS: ${{ inputs.has_screenshots }}
         run: |
           set -euo pipefail
+          # Fail rather than skip: an app without Codemagic setup would
+          # otherwise ship a release with no iOS build and a green run.
+          if [ -z "$APP_ID" ]; then
+            echo "::error::deploy_ios braucht codemagic_app_id; iOS baut nur noch auf Codemagic (README → \"iOS über Codemagic\"). Ohne iOS-Deploy: Variable DEPLOY_IOS_ENABLED=false setzen."
+            exit 1
+          fi
           if [ -z "$CODEMAGIC_API_TOKEN" ]; then
             echo "::error::codemagic_app_id ist gesetzt, das Secret CODEMAGIC_API_TOKEN fehlt"
             exit 1

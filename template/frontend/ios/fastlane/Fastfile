@@ -1,8 +1,8 @@
 # Template for <working_dir>/ios/fastlane/Fastfile.
 #
-# The deploy-ios job in onceinaweihl_workflows' reusable-cd.yml calls these
+# The Codemagic workflow (template/codemagic.yaml) calls these
 # lanes by name, and scripts/deploy_ios.sh should call the same ones, so a
-# local deploy and a CI deploy sign, number and upload alike:
+# local deploy and a Codemagic deploy sign, number and upload alike:
 #
 #   sync_certificates   install certificates and profiles via match (read-only)
 #   next_build_number   write the next free build number to build/next_build_number
@@ -18,10 +18,10 @@
 
 default_platform(:ios)
 
-# Absolute paths, so the lanes work whether fastlane runs from ios/ (CD,
+# Absolute paths, so the lanes work whether fastlane runs from ios/ (Codemagic,
 # scripts/deploy_ios.sh) or from ios/fastlane/ (manual).
 IPA_GLOB = File.expand_path("../../build/ios/ipa/*.ipa", __dir__)
-# Written by `next_build_number`, read by the CD workflow and scripts/deploy_ios.sh.
+# Written by `next_build_number`, read by codemagic.yaml and scripts/deploy_ios.sh.
 BUILD_NUMBER_PATH = File.expand_path("../../build/next_build_number", __dir__)
 
 platform :ios do

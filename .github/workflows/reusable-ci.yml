@@ -43,13 +43,13 @@ on:
         description: Android Debug Build ausführen (default on)
         type: boolean
         default: true
+      # Without effect since iOS builds only on Codemagic. Kept because callers
+      # on @main still pass it and an unknown input fails the whole workflow;
+      # drop with the next major.
       run_ios_build:
-        description: iOS Debug Build ausführen (kostet macOS-Minutes, default off)
+        description: Ohne Wirkung; iOS baut nur noch auf Codemagic (reusable-cd.yml).
         type: boolean
         default: false
-      xcode_version:
-        type: string
-        default: '15.4'
       security_enabled:
         description: Trivy Security Scan ausführen (vuln + secret + misconfig)
         type: boolean
@@ -264,40 +264,7 @@ jobs:
       - run: flutter build apk --debug
 
   # ─────────────────────────────────────────
-  # 5. iOS Debug Build (opt-in, spart macOS-Minutes)
-  # ─────────────────────────────────────────
-  build-ios:
-    name: iOS Debug Build
-    if: inputs.run_ios_build
-    runs-on: macos-15
-    defaults:
-      run:
-        working-directory: ${{ inputs.working_dir }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-
-      - name: Select Xcode ${{ inputs.xcode_version }}
-        env:
-          XCODE_VERSION: ${{ inputs.xcode_version }}
-        run: sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
-
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          flutter-version: ${{ inputs.flutter_version }}
-          cache: true
-
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
-        with:
-          app-id: ${{ inputs.core_access_app_id }}
-          private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
-
-      - run: flutter pub get
-      - run: flutter build ios --debug --no-codesign
-
-  # ─────────────────────────────────────────
-  # 6. Security Scan (Trivy)
+  # 5. Security Scan (Trivy)
   # ─────────────────────────────────────────
   # Blocks PRs that introduce HIGH/CRITICAL vulns, secrets, or
   # misconfigurations. Severity threshold and on/off-switch are configurable

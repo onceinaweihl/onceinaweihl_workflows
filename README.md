@@ -165,6 +165,8 @@ Die Lanes lesen den API-Key aus `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNE
 
 Die Xcode-Version steht in der `codemagic.yaml` (`environment.xcode`).
 
+Die `release`-Lane (`deliver`) lädt die Metadaten aus `ios/fastlane/metadata/<locale>/` hoch und legt dabei fehlende Lokalisierungen an. Pro Locale gehören deshalb auch `privacy_url.txt` und `support_url.txt` dazu, sonst scheitert die Einreichung zur Review an der neuen Lokalisierung. Der App-Name (`name.txt`) muss im ganzen App Store frei sein, in jeder Sprache. Die TestFlight-Lane lädt keine Metadaten hoch und deckt beides nicht auf.
+
 ### 7. iOS über Codemagic
 
 iOS baut ausschließlich auf Codemagic; ein macOS-Runner verbraucht bei privaten Repos zehn Minuten Kontingent pro Minute (Codemagic Free-Plan für persönliche Accounts: 500 M2-Minuten im Monat). Der Job `deploy-ios-codemagic` läuft auf Linux nach dem Test-Gate, startet den Codemagic-Workflow per API und wartet auf das Ergebnis. Ein fehlgeschlagener iOS-Build macht den CD-Lauf rot. Fehlt `codemagic_app_id`, bricht der Job mit einer Fehlermeldung ab, statt still zu überspringen; eine App ohne iOS setzt `DEPLOY_IOS_ENABLED=false`.

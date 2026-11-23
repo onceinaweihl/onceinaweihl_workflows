@@ -14,5 +14,5 @@ permissions:
 
 jobs:
   release-notes:
-    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-notes.yml@v1.9.2
+    uses: onceinaweihl/onceinaweihl_workflows/.github/workflows/reusable-release-notes.yml@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
     secrets: inherit

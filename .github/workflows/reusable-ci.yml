@@ -79,7 +79,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -111,7 +111,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -147,7 +147,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -255,7 +255,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}
@@ -304,7 +304,7 @@ jobs:
           flutter-version: ${{ inputs.flutter_version }}
           cache: true
 
-      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@v1.11.0
+      - uses: onceinaweihl/onceinaweihl_workflows/actions/setup-core-auth@eef65ffe9ea5a6bebc5b6a94442d57add1e2e5f5 # v1.12.0
         with:
           app-id: ${{ inputs.core_access_app_id }}
           private-key: ${{ secrets.CORE_ACCESS_APP_KEY }}

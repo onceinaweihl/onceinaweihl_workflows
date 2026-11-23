@@ -41,7 +41,7 @@ jobs:
       # Job-level env so the renovate regex manager (annotation directly
       # above a `key: value` line) can track the binary version.
       # renovate: datasource=github-releases depName=aquasecurity/trivy
-      TRIVY_VERSION: v0.74.0
+      TRIVY_VERSION: v0.76.2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
